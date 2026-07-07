@@ -883,6 +883,55 @@ const btnCopyScript = $('btn-copy-script');
 const copyConfirm  = $('copy-confirm');
 
 // ═══════════════════════════════════════════════════════════
+// Duke Estimating extension bridge
+// ─────────────────────────────────────────────────────────────
+// If the Duke Estimating Chrome extension is installed, its content
+// script (webpage-bridge.js) announces itself here. When present, we
+// hand "Write to Estimate" off to the extension instead of showing the
+// manual copy/paste script modal — the extension can open a real tab
+// picker (like choosing a tab to share) and write directly into the
+// tab the user picks. If the extension isn't installed, we fall back
+// to the manual modal exactly as before.
+// ═══════════════════════════════════════════════════════════
+let dukeExtensionReady = false;
+
+window.addEventListener('message', (event) => {
+  if (event.source !== window) return;
+  const data = event.data;
+  if (!data || data.source !== 'duke-ext') return;
+  if (data.type === 'EXTENSION_READY') dukeExtensionReady = true;
+});
+
+// Ask the content script (if any) to announce itself, in case it loaded
+// before this listener was attached.
+window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
+
+// Sends items to the extension and waits briefly for confirmation that
+// its tab-picker window opened. Resolves false if the extension isn't
+// installed or doesn't respond in time, so callers can fall back.
+function tryExtensionHandoff(items) {
+  return new Promise((resolve) => {
+    if (!dukeExtensionReady) { resolve(false); return; }
+
+    const timeout = setTimeout(() => { cleanup(); resolve(false); }, 1500);
+    function onMessage(event) {
+      if (event.source !== window) return;
+      const data = event.data;
+      if (!data || data.source !== 'duke-ext') return;
+      if (data.type !== 'OPEN_ESTIMATE_TAB_PICKER_RESULT') return;
+      cleanup();
+      resolve(!!data.ok);
+    }
+    function cleanup() {
+      clearTimeout(timeout);
+      window.removeEventListener('message', onMessage);
+    }
+    window.addEventListener('message', onMessage);
+    window.postMessage({ source: 'keel-quick-quote', type: 'OPEN_ESTIMATE_TAB_PICKER', items }, '*');
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
 // Auth — Google Identity Services
 // ═══════════════════════════════════════════════════════════
 window.addEventListener('load', () => {
@@ -1105,8 +1154,15 @@ btnEstimate.addEventListener('click', async () => {
     ];
     if (lender) items.push({ name: 'Preferred Lender Incentive', qty: 1 });
 
-    hideStatus();
-    openScriptModal(items);
+    btnEstimate.textContent = 'Opening tab picker…';
+    const handedOff = await tryExtensionHandoff(items);
+
+    if (handedOff) {
+      showStatus('✓ Opened the Duke Estimating extension — pick your Estimate tab in the window that just opened.', 'success');
+    } else {
+      hideStatus();
+      openScriptModal(items);
+    }
   } catch(e) {
     showStatus('Error reading sheet: ' + e.message, 'error');
   } finally {
