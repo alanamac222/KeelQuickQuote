@@ -901,22 +901,38 @@
     <!-- ── Status ── -->
     <div id="status" class="status"></div>
 
-    <!-- ── Prereq + Write to Estimate ── -->
+    <!-- ── Write to Estimate button (shown after Go succeeds) ── -->
     <div id="prereq-wrap" class="prereq-wrap">
-      <div class="prereq-card">
-        <p>Before writing to estimate, confirm you have:</p>
-        <ol>
-          <li>The Job created in <strong>Buildertrend</strong></li>
-          <li>The Estimate Template <strong>"Test Conceptual Budget Template"</strong> in the estimate tab</li>
-          <li>One <strong>Estimate tab</strong> open in Chrome</li>
-        </ol>
-      </div>
       <div class="est-row">
         <button id="btn-write-estimate" class="btn-estimate">Write to Estimate</button>
       </div>
     </div>
 
   </main>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     PREREQ MODAL
+════════════════════════════════════════════ -->
+<div id="prereq-modal" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" style="max-width:480px">
+    <div class="modal-head">
+      <div class="modal-head-text">
+        <div class="modal-title">Before writing to estimate, confirm you have:</div>
+      </div>
+      <button class="modal-close" id="prereq-modal-close" aria-label="Close">✕</button>
+    </div>
+    <div style="padding:22px 24px 8px">
+      <ol style="padding-left:20px;display:flex;flex-direction:column;gap:12px">
+        <li style="font-size:14px;color:#1e293b;line-height:1.5">The Job created in <strong>Buildertrend</strong></li>
+        <li style="font-size:14px;color:#1e293b;line-height:1.5">The Estimate Template <strong style="color:#1a1a2e">"Test Conceptual Budget Template"</strong> in the estimate tab</li>
+        <li style="font-size:14px;color:#1e293b;line-height:1.5">One <strong>Estimate tab</strong> open in Chrome</li>
+      </ol>
+    </div>
+    <div class="modal-foot" style="margin-top:10px">
+      <button class="btn-estimate" id="btn-confirm-estimate" style="height:40px;padding:0 28px;font-size:14px">Write to Estimate</button>
+    </div>
+  </div>
 </div>
 
 <!-- ═══════════════════════════════════════════
@@ -1021,6 +1037,8 @@ const btnClear     = $('btn-clear');
 const statusEl     = $('status');
 const prereqWrap   = $('prereq-wrap');
 const btnEstimate  = $('btn-write-estimate');
+const prereqModal  = $('prereq-modal');
+const btnConfirm   = $('btn-confirm-estimate');
 const modalBackdrop = $('modal-backdrop');
 const modalClose   = $('modal-close');
 const scriptBox    = $('script-box');
@@ -1333,7 +1351,17 @@ btnClear.addEventListener('click', () => {
 // ═══════════════════════════════════════════════════════════
 // Write to Estimate — reads sheet, generates automation script
 // ═══════════════════════════════════════════════════════════
-btnEstimate.addEventListener('click', async () => {
+// "Write to Estimate" opens the prereq confirmation modal
+btnEstimate.addEventListener('click', () => {
+  prereqModal.classList.add('show');
+});
+
+$('prereq-modal-close').addEventListener('click', () => prereqModal.classList.remove('show'));
+prereqModal.addEventListener('click', e => { if (e.target === prereqModal) prereqModal.classList.remove('show'); });
+
+// Confirmed — now read sheet and generate script
+btnConfirm.addEventListener('click', async () => {
+  prereqModal.classList.remove('show');
   if (!accessToken) { showStatus('Not signed in.', 'error'); return; }
 
   btnEstimate.disabled = true;
@@ -1422,7 +1450,10 @@ modalBackdrop.addEventListener('click', e => {
   if (e.target === modalBackdrop) modalBackdrop.classList.remove('show');
 });
 document.addEventListener('keydown', e => {
-  if (e.key === 'Escape') modalBackdrop.classList.remove('show');
+  if (e.key === 'Escape') {
+    modalBackdrop.classList.remove('show');
+    prereqModal.classList.remove('show');
+  }
 });
 
 btnCopyScript.addEventListener('click', async () => {
