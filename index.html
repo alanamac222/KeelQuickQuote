@@ -1244,36 +1244,28 @@ planSelect.addEventListener('change', async () => {
   planMsg('Loading…');
   const sheetTab = '2026 MASTER PLAN ' + key;
   try {
-    const [areaRows, countRows] = await Promise.all([
-      sheetsReadRange(sheetTab, 'H3:I12'),
-      sheetsReadRange(sheetTab, 'H18:I28'),
+    // Read just the I column by known row positions — mirrors CELL_MAP exactly
+    const [areaVals, countVals] = await Promise.all([
+      sheetsReadRange(sheetTab, 'I3:I12'),
+      sheetsReadRange(sheetTab, 'I18:I29'),
     ]);
+
+    const areaKeys  = ['basement','1st floor','2nd floor','3rd floor','attic with storage','habitable attic','front porch','rear porch','rear deck','garage'];
+    const countKeys = ['# of exterior doors','# of windows','# of baths','cabinets lf','countertops lf','# of staircases','# of front porch columns','# of garage doors','# of interior doors','sf of carpet','sf of hardwood','sf of tile'];
 
     document.querySelectorAll('.f-input').forEach(i => i.value = '');
 
-    function normKey(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
-    const inputMap = {};
-    document.querySelectorAll('.f-input').forEach(inp => {
-      inputMap[normKey(inp.dataset.key)] = inp;
-    });
-
-    function fillRows(rows) {
-      rows.forEach(row => {
-        if (!row || row.length < 2) return;
-        const label = normKey(row[0]);
-        const val   = parseFloat(String(row[1] || '0').replace(/[^0-9.-]/g, '')) || 0;
-        if (!label || val === 0) return;
-        // exact match first
-        if (inputMap[label]) { inputMap[label].value = val; return; }
-        // partial: data-key normalized is substring of sheet label
-        for (const [k, inp] of Object.entries(inputMap)) {
-          if (label.includes(k) || k.includes(label)) { inp.value = val; return; }
-        }
+    function applyVals(rows, keys) {
+      rows.forEach((row, i) => {
+        if (i >= keys.length) return;
+        const val = parseFloat(String((row && row[0]) || '0').replace(/[^0-9.-]/g, '')) || 0;
+        const inp = document.querySelector(`.f-input[data-key="${keys[i]}"]`);
+        if (inp && val > 0) inp.value = val;
       });
     }
 
-    fillRows(areaRows);
-    fillRows(countRows);
+    applyVals(areaVals, areaKeys);
+    applyVals(countVals, countKeys);
     planMsg('✓ ' + key.charAt(0) + key.slice(1).toLowerCase() + ' loaded', 'ok');
     setTimeout(() => { planStatusEl.textContent = ''; planStatusEl.classList.add('hidden'); }, 2500);
   } catch(e) {
@@ -1301,31 +1293,21 @@ $('btn-add-custom-row').addEventListener('click', () => {
 btnGo.addEventListener('click', async () => {
   if (!accessToken) { showStatus('Not signed in.', 'error'); return; }
 
-  const values = {};
-  document.querySelectorAll('.f-input').forEach(inp => {
-    if (inp.value.trim() !== '') values[inp.dataset.key] = parseFloat(inp.value);
-  });
-
-  if (!Object.keys(values).length) {
-    showStatus('No values entered — fill in at least one field.', 'error');
-    return;
-  }
-
   btnGo.disabled = true;
   btnGo.textContent = 'Writing…';
   showStatus('Writing to Google Sheet…', 'info', true);
   prereqWrap.classList.remove('show');
 
   try {
-    // Zero-fill first
-    await sheetsWrite(ZERO_RANGES.map(r => ({ range: r, value: 0 })));
-
-    // Write real values
+    // Build full update list — every field, 0 if blank
     const updates = [];
-    for (const [key, val] of Object.entries(values)) {
-      const cell = CELL_MAP[key.toLowerCase().trim()];
-      if (cell !== undefined) updates.push({ range: cell, value: val });
-    }
+    document.querySelectorAll('.f-input').forEach(inp => {
+      const cell = CELL_MAP[inp.dataset.key.toLowerCase().trim()];
+      if (cell !== undefined) updates.push({ range: cell, value: parseFloat(inp.value) || 0 });
+    });
+
+    // Zero-fill first, then write all values
+    await sheetsWrite(ZERO_RANGES.map(r => ({ range: r, value: 0 })));
     await sheetsWrite(updates);
 
     showStatus('✓ Written ' + updates.length + ' value(s) to sheet.', 'success');
