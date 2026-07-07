@@ -1,0 +1,1261 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Keel Quick Quote</title>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --navy:       #1a1a2e;
+      --navy-mid:   #24243e;
+      --gold:       #e8b84b;
+      --gold-dk:    #c9983a;
+      --gold-pale:  #fdf5dc;
+      --surface:    #f2f4f7;
+      --card:       #ffffff;
+      --text:       #1e293b;
+      --sub:        #475569;
+      --muted:      #64748b;
+      --border:     #e2e8f0;
+      --border-dk:  #cbd5e1;
+      --radius:     10px;
+      --shadow:     0 1px 3px rgba(0,0,0,.06), 0 4px 18px rgba(0,0,0,.07);
+    }
+
+    html { font-size: 15px; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--surface);
+      color: var(--text);
+      min-height: 100vh;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* ── Utility ── */
+    .hidden { display: none !important; }
+
+    /* ═══════════════════════════════════════
+       LOGIN SCREEN
+    ═══════════════════════════════════════ */
+    #login-screen {
+      min-height: 100vh;
+      background: var(--navy);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .login-card {
+      background: var(--card);
+      border-radius: 16px;
+      padding: 48px 44px 44px;
+      width: 100%;
+      max-width: 400px;
+      text-align: center;
+      box-shadow: 0 8px 40px rgba(0,0,0,.35);
+    }
+
+    .login-logo {
+      width: 52px; height: 52px;
+      background: var(--gold);
+      border-radius: 12px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 16px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.5px;
+      margin-bottom: 20px;
+    }
+
+    .login-title {
+      font-size: 22px;
+      font-weight: 700;
+      color: var(--navy);
+      letter-spacing: -0.4px;
+      margin-bottom: 8px;
+    }
+
+    .login-sub {
+      font-size: 13px;
+      color: var(--muted);
+      line-height: 1.55;
+      margin-bottom: 32px;
+    }
+
+    .btn-google {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      width: 100%;
+      height: 46px;
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+      letter-spacing: 0.01em;
+    }
+    .btn-google:hover { background: var(--navy-mid); }
+    .btn-google:disabled { opacity: 0.55; cursor: not-allowed; }
+
+    .btn-google svg { flex-shrink: 0; }
+
+    .login-note {
+      margin-top: 18px;
+      font-size: 11.5px;
+      color: #94a3b8;
+    }
+
+    /* ═══════════════════════════════════════
+       APP SHELL
+    ═══════════════════════════════════════ */
+    #app { min-height: 100vh; }
+
+    /* ── Header ── */
+    header {
+      background: var(--navy);
+      height: 58px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      position: sticky;
+      top: 0;
+      z-index: 200;
+      box-shadow: 0 2px 10px rgba(0,0,0,.3);
+    }
+
+    .hdr-logo {
+      width: 34px; height: 34px;
+      background: var(--gold);
+      border-radius: 7px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: 12px;
+      font-weight: 800;
+      color: var(--navy);
+      letter-spacing: -0.5px;
+      flex-shrink: 0;
+    }
+
+    .hdr-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      letter-spacing: -0.2px;
+      flex: 1;
+    }
+
+    .hdr-user {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+
+    .hdr-email {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .btn-signout {
+      height: 28px;
+      padding: 0 12px;
+      background: rgba(255,255,255,0.1);
+      color: rgba(255,255,255,0.75);
+      border: 1px solid rgba(255,255,255,0.15);
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.15s;
+      white-space: nowrap;
+    }
+    .btn-signout:hover { background: rgba(255,255,255,0.18); }
+
+    /* ── Main ── */
+    main {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 28px 20px 64px;
+    }
+
+    .page-eyebrow {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.1em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .page-heading {
+      font-size: 24px;
+      font-weight: 700;
+      color: var(--navy);
+      letter-spacing: -0.5px;
+      margin-bottom: 4px;
+    }
+
+    .page-sub {
+      font-size: 13px;
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+
+    /* ── Form Grid ── */
+    .form-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 14px;
+      margin-bottom: 14px;
+    }
+
+    @media (max-width: 600px) {
+      .form-grid { grid-template-columns: 1fr; }
+      .hdr-email { display: none; }
+    }
+
+    .card {
+      background: var(--card);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      border: 1px solid var(--border);
+      padding: 20px;
+    }
+
+    .section-label {
+      font-size: 10.5px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.09em;
+      color: var(--muted);
+      padding-bottom: 12px;
+      border-bottom: 1px solid var(--border);
+      margin-bottom: 4px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .section-label span {
+      font-weight: 400;
+      text-transform: none;
+      letter-spacing: 0;
+      font-size: 10px;
+      color: #94a3b8;
+    }
+
+    .divider-row {
+      height: 1px;
+      background: var(--border);
+      margin: 8px 0 4px;
+    }
+
+    /* ── Field Rows ── */
+    .f-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      min-height: 38px;
+      border-bottom: 1px solid #f1f5f9;
+    }
+    .f-row:last-child { border-bottom: none; }
+
+    .f-label {
+      font-size: 13px;
+      color: var(--text);
+      flex: 1;
+      line-height: 1.3;
+    }
+    .f-label em {
+      font-style: normal;
+      font-size: 11px;
+      color: var(--muted);
+      margin-left: 3px;
+    }
+
+    .f-input {
+      width: 88px;
+      height: 30px;
+      border: 1px solid var(--border-dk);
+      border-radius: 6px;
+      padding: 0 9px;
+      font-size: 13px;
+      color: var(--text);
+      text-align: right;
+      font-variant-numeric: tabular-nums;
+      background: #fafbfc;
+      outline: none;
+      transition: border-color 0.12s, box-shadow 0.12s;
+      flex-shrink: 0;
+    }
+    .f-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(232,184,75,.18);
+      background: #fff;
+    }
+    .f-input::placeholder { color: #bcc5d0; }
+
+    /* ── Action Bar ── */
+    .action-bar {
+      background: var(--card);
+      border-radius: var(--radius);
+      border: 1px solid var(--border);
+      box-shadow: var(--shadow);
+      padding: 14px 20px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      flex-wrap: wrap;
+    }
+
+    .lender-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      color: var(--text);
+      cursor: pointer;
+      flex: 1;
+      min-width: 180px;
+    }
+    .lender-label input[type="checkbox"] {
+      width: 15px; height: 15px;
+      accent-color: var(--navy);
+      cursor: pointer;
+    }
+
+    .btn-go {
+      height: 40px;
+      padding: 0 32px;
+      background: var(--gold);
+      color: var(--navy);
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 700;
+      cursor: pointer;
+      letter-spacing: 0.02em;
+      transition: background 0.15s, transform 0.1s;
+    }
+    .btn-go:hover { background: var(--gold-dk); }
+    .btn-go:active { transform: scale(0.97); }
+    .btn-go:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    .btn-ghost {
+      height: 40px;
+      padding: 0 16px;
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border-dk);
+      border-radius: 8px;
+      font-size: 13px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: background 0.12s, color 0.12s;
+    }
+    .btn-ghost:hover { background: var(--surface); color: var(--text); }
+
+    /* ── Status ── */
+    .status {
+      display: none;
+      align-items: center;
+      gap: 8px;
+      padding: 11px 16px;
+      border-radius: var(--radius);
+      font-size: 13px;
+      font-weight: 500;
+      margin-top: 12px;
+    }
+    .status.show { display: flex; }
+    .status.success { background: #f0fdf4; border: 1px solid #86efac; color: #166534; }
+    .status.error   { background: #fff1f2; border: 1px solid #fda4af; color: #9f1239; }
+    .status.info    { background: #eff6ff; border: 1px solid #93c5fd; color: #1e40af; }
+
+    /* ── Prereq Section ── */
+    .prereq-wrap {
+      margin-top: 18px;
+      display: none;
+    }
+    .prereq-wrap.show { display: block; }
+
+    .prereq-card {
+      background: var(--gold-pale);
+      border: 1px solid #f0d580;
+      border-radius: var(--radius);
+      padding: 18px 20px;
+      margin-bottom: 14px;
+    }
+
+    .prereq-card p {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--navy);
+      margin-bottom: 10px;
+    }
+
+    .prereq-card ol {
+      padding-left: 18px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+
+    .prereq-card li {
+      font-size: 13px;
+      color: #4a3c00;
+      line-height: 1.5;
+    }
+
+    .prereq-card li strong {
+      color: var(--navy);
+      font-weight: 600;
+    }
+
+    .est-row {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+
+    .btn-estimate {
+      height: 42px;
+      padding: 0 28px;
+      background: var(--navy);
+      color: #fff;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-estimate:hover { background: var(--navy-mid); }
+    .btn-estimate:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ═══════════════════════════════════════
+       SCRIPT MODAL
+    ═══════════════════════════════════════ */
+    .modal-backdrop {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(15,15,30,0.6);
+      z-index: 900;
+      align-items: center;
+      justify-content: center;
+      padding: 20px;
+    }
+    .modal-backdrop.show { display: flex; }
+
+    .modal {
+      background: var(--card);
+      border-radius: 14px;
+      width: 100%;
+      max-width: 620px;
+      max-height: 90vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0,0,0,.35);
+      overflow: hidden;
+    }
+
+    .modal-head {
+      background: var(--navy);
+      padding: 18px 22px;
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 12px;
+      flex-shrink: 0;
+    }
+
+    .modal-head-text {}
+
+    .modal-title {
+      font-size: 15px;
+      font-weight: 700;
+      color: #fff;
+      margin-bottom: 4px;
+    }
+
+    .modal-sub {
+      font-size: 12px;
+      color: rgba(255,255,255,0.5);
+      line-height: 1.5;
+    }
+
+    .modal-close {
+      background: rgba(255,255,255,0.1);
+      border: none;
+      border-radius: 6px;
+      width: 28px; height: 28px;
+      color: rgba(255,255,255,0.7);
+      cursor: pointer;
+      font-size: 16px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      transition: background 0.12s;
+    }
+    .modal-close:hover { background: rgba(255,255,255,0.2); }
+
+    .modal-steps {
+      padding: 16px 22px 0;
+      flex-shrink: 0;
+    }
+
+    .step-list {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      margin-bottom: 14px;
+    }
+
+    .step-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 10px;
+      font-size: 13px;
+      color: var(--sub);
+      line-height: 1.5;
+    }
+
+    .step-num {
+      width: 20px; height: 20px;
+      background: var(--navy);
+      color: #fff;
+      border-radius: 50%;
+      font-size: 10px;
+      font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+      margin-top: 1px;
+    }
+
+    .step-item code {
+      background: #f1f5f9;
+      border: 1px solid var(--border);
+      border-radius: 4px;
+      padding: 1px 5px;
+      font-family: 'Menlo', 'Consolas', monospace;
+      font-size: 12px;
+      color: var(--navy);
+    }
+
+    .modal-script-wrap {
+      flex: 1;
+      overflow: hidden;
+      padding: 0 22px;
+      margin-bottom: 4px;
+    }
+
+    .script-label {
+      font-size: 11px;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .script-box {
+      background: var(--navy);
+      border-radius: 8px;
+      padding: 14px;
+      font-family: 'Menlo', 'Consolas', 'Monaco', monospace;
+      font-size: 11px;
+      color: #94a3b8;
+      line-height: 1.6;
+      overflow-y: auto;
+      max-height: 200px;
+      white-space: pre-wrap;
+      word-break: break-all;
+      user-select: all;
+    }
+
+    .modal-foot {
+      padding: 14px 22px;
+      display: flex;
+      gap: 10px;
+      flex-wrap: wrap;
+      border-top: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .btn-copy {
+      height: 38px;
+      padding: 0 22px;
+      background: var(--gold);
+      color: var(--navy);
+      border: none;
+      border-radius: 7px;
+      font-size: 13px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-copy:hover { background: var(--gold-dk); }
+
+    .copy-confirm {
+      font-size: 12px;
+      color: #16a34a;
+      align-self: center;
+      display: none;
+    }
+    .copy-confirm.show { display: block; }
+
+    /* ── Spinner ── */
+    .spin {
+      display: inline-block;
+      width: 13px; height: 13px;
+      border: 2px solid rgba(0,0,0,0.12);
+      border-top-color: currentColor;
+      border-radius: 50%;
+      animation: rotating 0.55s linear infinite;
+      vertical-align: middle;
+      margin-right: 4px;
+    }
+    @keyframes rotating { to { transform: rotate(360deg); } }
+    @media (prefers-reduced-motion: reduce) { .spin { animation: none; } }
+  </style>
+</head>
+<body>
+
+<!-- ═══════════════════════════════════════════
+     LOGIN SCREEN
+════════════════════════════════════════════ -->
+<div id="login-screen">
+  <div class="login-card">
+    <div class="login-logo">EZ</div>
+    <h1 class="login-title">Keel Quick Quote</h1>
+    <p class="login-sub">Enter project measurements and write them directly to your estimate sheet — no takeoff required.</p>
+    <button id="btn-signin" class="btn-google">
+      <svg width="18" height="18" viewBox="0 0 18 18" fill="none">
+        <path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/>
+        <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/>
+        <path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+        <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+      </svg>
+      Sign in with Google
+    </button>
+    <p class="login-note">Uses your Google account to access your connected estimate sheet.</p>
+  </div>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     APP
+════════════════════════════════════════════ -->
+<div id="app" class="hidden">
+  <header>
+    <div class="hdr-logo">EZ</div>
+    <div class="hdr-title">Keel Quick Quote</div>
+    <div class="hdr-user">
+      <span class="hdr-email" id="hdr-email"></span>
+      <button class="btn-signout" id="btn-signout">Sign out</button>
+    </div>
+  </header>
+
+  <main>
+    <p class="page-eyebrow">KeelEZEstimate System</p>
+    <h1 class="page-heading">Manual Entry</h1>
+    <p class="page-sub">Fill in the measurements below, then press <strong>Go</strong> to write to your estimate sheet.</p>
+
+    <div class="form-grid">
+
+      <!-- ── Building Areas ── -->
+      <div class="card">
+        <div class="section-label">Building Areas <span>Square Feet</span></div>
+
+        <div class="f-row"><span class="f-label">Basement</span>
+          <input class="f-input" type="number" data-key="basement" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">1st Floor</span>
+          <input class="f-input" type="number" data-key="1st floor" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">2nd Floor</span>
+          <input class="f-input" type="number" data-key="2nd floor" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">3rd Floor</span>
+          <input class="f-input" type="number" data-key="3rd floor" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Attic w/ Storage</span>
+          <input class="f-input" type="number" data-key="attic with storage" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Habitable Attic</span>
+          <input class="f-input" type="number" data-key="habitable attic" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Front Porch</span>
+          <input class="f-input" type="number" data-key="front porch" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Rear Porch</span>
+          <input class="f-input" type="number" data-key="rear porch" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Rear Deck</span>
+          <input class="f-input" type="number" data-key="rear deck" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Garage</span>
+          <input class="f-input" type="number" data-key="garage" placeholder="0" min="0"></div>
+
+        <div class="divider-row"></div>
+
+        <div class="f-row"><span class="f-label">Cabinets <em>LF</em></span>
+          <input class="f-input" type="number" data-key="cabinets lf" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">Countertops <em>LF</em></span>
+          <input class="f-input" type="number" data-key="countertops lf" placeholder="0" min="0"></div>
+      </div>
+
+      <!-- ── Counts & Areas ── -->
+      <div class="card">
+        <div class="section-label">Counts &amp; Areas</div>
+
+        <div class="f-row"><span class="f-label"># Exterior Doors</span>
+          <input class="f-input" type="number" data-key="# of exterior doors" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label"># Windows</span>
+          <input class="f-input" type="number" data-key="# of windows" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label"># Baths</span>
+          <input class="f-input" type="number" data-key="# of baths" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label"># Staircases</span>
+          <input class="f-input" type="number" data-key="# of staircases" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label"># Porch Columns</span>
+          <input class="f-input" type="number" data-key="# of front porch columns" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label"># Garage Doors</span>
+          <input class="f-input" type="number" data-key="# of garage doors" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label"># Interior Doors</span>
+          <input class="f-input" type="number" data-key="# of interior doors" placeholder="0" min="0"></div>
+
+        <div class="divider-row"></div>
+
+        <div class="f-row"><span class="f-label">SF Carpet</span>
+          <input class="f-input" type="number" data-key="sf of carpet" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">SF Hardwood</span>
+          <input class="f-input" type="number" data-key="sf of hardwood" placeholder="0" min="0"></div>
+        <div class="f-row"><span class="f-label">SF Tile</span>
+          <input class="f-input" type="number" data-key="sf of tile" placeholder="0" min="0"></div>
+      </div>
+
+    </div><!-- /.form-grid -->
+
+    <!-- ── Action Bar ── -->
+    <div class="action-bar">
+      <label class="lender-label">
+        <input type="checkbox" id="chk-lender">
+        Preferred Lender Incentive
+      </label>
+      <button id="btn-go" class="btn-go">Go →</button>
+      <button id="btn-clear" class="btn-ghost">Clear</button>
+    </div>
+
+    <!-- ── Status ── -->
+    <div id="status" class="status"></div>
+
+    <!-- ── Prereq + Write to Estimate ── -->
+    <div id="prereq-wrap" class="prereq-wrap">
+      <div class="prereq-card">
+        <p>Before writing to estimate, confirm you have:</p>
+        <ol>
+          <li>The Job created in <strong>Buildertrend</strong></li>
+          <li>The Estimate Template <strong>"Test Conceptual Budget Template"</strong> in the estimate tab</li>
+          <li>One <strong>Estimate tab</strong> open in Chrome</li>
+        </ol>
+      </div>
+      <div class="est-row">
+        <button id="btn-write-estimate" class="btn-estimate">Write to Estimate</button>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ═══════════════════════════════════════════
+     SCRIPT MODAL
+════════════════════════════════════════════ -->
+<div id="modal-backdrop" class="modal-backdrop">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title-text">
+    <div class="modal-head">
+      <div class="modal-head-text">
+        <div class="modal-title" id="modal-title-text">Run on BuilderTrend</div>
+        <div class="modal-sub">Copy the script below and run it in the Chrome console while on your BuilderTrend Estimate page.</div>
+      </div>
+      <button class="modal-close" id="modal-close" aria-label="Close">✕</button>
+    </div>
+
+    <div class="modal-steps">
+      <div class="step-list">
+        <div class="step-item">
+          <div class="step-num">1</div>
+          <div>Switch to your <strong>BuilderTrend Estimate</strong> tab in Chrome</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">2</div>
+          <div>Press <code>F12</code> (Windows) or <code>⌘⌥J</code> (Mac) to open DevTools → click the <code>Console</code> tab</div>
+        </div>
+        <div class="step-item">
+          <div class="step-num">3</div>
+          <div>Click <strong>Copy Script</strong> below, paste into the console, and press <code>Enter</code></div>
+        </div>
+      </div>
+    </div>
+
+    <div class="modal-script-wrap">
+      <div class="script-label">Automation Script</div>
+      <div class="script-box" id="script-box"></div>
+    </div>
+
+    <div class="modal-foot">
+      <button class="btn-copy" id="btn-copy-script">Copy Script</button>
+      <span class="copy-confirm" id="copy-confirm">✓ Copied to clipboard</span>
+    </div>
+  </div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════════════
+// CONFIG — update these to match your Google Cloud project
+// and sheet details
+// ═══════════════════════════════════════════════════════════
+const CLIENT_ID  = 'YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE';
+const SHEET_ID   = '1iO37IiTagtu4OGEZSHA5C62tPRc5HOKMpq0UcsUI9ig';
+const SHEET_NAME = '2026 CUSTOM PLAN';
+
+// ── Cell Map (matches extension background.js CELL_MAP) ──────────────────────
+const CELL_MAP = {
+  'basement':                 'I3',
+  '1st floor':                'I4',
+  '2nd floor':                'I5',
+  '3rd floor':                'I6',
+  'attic with storage':       'I7',
+  'habitable attic':          'I8',
+  'front porch':              'I9',
+  'rear porch':               'I10',
+  'rear deck':                'I11',
+  'garage':                   'I12',
+  '# of exterior doors':      'I18',
+  '# of windows':             'I19',
+  '# of baths':               'I20',
+  'cabinets lf':              'I21',
+  'countertops lf':           'I22',
+  '# of staircases':          'I23',
+  '# of front porch columns': 'I24',
+  '# of garage doors':        'I25',
+  '# of interior doors':      'I26',
+  'sf of carpet':             'I27',
+  'sf of hardwood':           'I28',
+  'sf of tile':               'I29',
+};
+
+const ZERO_RANGES = [
+  'I3','I4','I5','I6','I7','I8','I9','I10','I11','I12',
+  'I18','I19','I20','I21','I22','I23','I24','I25','I26','I27','I28'
+];
+
+// ═══════════════════════════════════════════════════════════
+// State
+// ═══════════════════════════════════════════════════════════
+let accessToken  = null;
+let tokenClient  = null;
+
+// ═══════════════════════════════════════════════════════════
+// DOM refs
+// ═══════════════════════════════════════════════════════════
+const $ = id => document.getElementById(id);
+const loginScreen  = $('login-screen');
+const appEl        = $('app');
+const btnSignin    = $('btn-signin');
+const btnSignout   = $('btn-signout');
+const hdrEmail     = $('hdr-email');
+const btnGo        = $('btn-go');
+const btnClear     = $('btn-clear');
+const statusEl     = $('status');
+const prereqWrap   = $('prereq-wrap');
+const btnEstimate  = $('btn-write-estimate');
+const modalBackdrop = $('modal-backdrop');
+const modalClose   = $('modal-close');
+const scriptBox    = $('script-box');
+const btnCopyScript = $('btn-copy-script');
+const copyConfirm  = $('copy-confirm');
+
+// ═══════════════════════════════════════════════════════════
+// Auth — Google Identity Services
+// ═══════════════════════════════════════════════════════════
+window.addEventListener('load', () => {
+  if (CLIENT_ID === 'YOUR_GOOGLE_OAUTH_CLIENT_ID_HERE') {
+    showStatus('⚠ Configure CLIENT_ID in the script to enable Google sign-in.', 'error');
+    btnSignin.textContent = 'Configure CLIENT_ID first';
+    btnSignin.disabled = true;
+    return;
+  }
+
+  // Wait for GIS to load
+  const waitForGIS = setInterval(() => {
+    if (window.google && google.accounts) {
+      clearInterval(waitForGIS);
+      initAuth();
+    }
+  }, 100);
+});
+
+function initAuth() {
+  tokenClient = google.accounts.oauth2.initTokenClient({
+    client_id: CLIENT_ID,
+    scope: 'https://www.googleapis.com/auth/spreadsheets',
+    callback: async (response) => {
+      if (response.error) {
+        showStatus('Sign-in failed: ' + response.error, 'error');
+        btnSignin.disabled = false;
+        btnSignin.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg> Sign in with Google';
+        return;
+      }
+      accessToken = response.access_token;
+
+      // Fetch user info
+      try {
+        const info = await fetch('https://www.googleapis.com/oauth2/v3/userinfo', {
+          headers: { Authorization: 'Bearer ' + accessToken }
+        }).then(r => r.json());
+        hdrEmail.textContent = info.email || info.name || '';
+      } catch(_) {}
+
+      loginScreen.classList.add('hidden');
+      appEl.classList.remove('hidden');
+    }
+  });
+}
+
+btnSignin.addEventListener('click', () => {
+  if (!tokenClient) return;
+  btnSignin.disabled = true;
+  btnSignin.innerHTML = '<span class="spin"></span> Signing in…';
+  tokenClient.requestAccessToken({ prompt: 'consent' });
+});
+
+btnSignout.addEventListener('click', () => {
+  if (accessToken) google.accounts.oauth2.revoke(accessToken, () => {});
+  accessToken = null;
+  appEl.classList.add('hidden');
+  loginScreen.classList.remove('hidden');
+  prereqWrap.classList.remove('show');
+  hideStatus();
+  document.querySelectorAll('.f-input').forEach(i => i.value = '');
+  btnSignin.disabled = false;
+  btnSignin.innerHTML = '<svg width="18" height="18" viewBox="0 0 18 18" fill="none"><path d="M17.64 9.205c0-.639-.057-1.252-.164-1.841H9v3.481h4.844a4.14 4.14 0 01-1.796 2.716v2.259h2.908c1.702-1.567 2.684-3.875 2.684-6.615z" fill="#4285F4"/><path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 009 18z" fill="#34A853"/><path d="M3.964 10.71A5.41 5.41 0 013.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 000 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/><path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 6.29C4.672 4.163 6.656 3.58 9 3.58z" fill="#EA4335"/></svg> Sign in with Google';
+});
+
+// ═══════════════════════════════════════════════════════════
+// Status helpers
+// ═══════════════════════════════════════════════════════════
+function showStatus(msg, type, spinning) {
+  statusEl.className = 'status show ' + (type || 'info');
+  statusEl.innerHTML = (spinning ? '<span class="spin"></span>' : '') + msg;
+}
+function hideStatus() {
+  statusEl.className = 'status';
+  statusEl.textContent = '';
+}
+
+// ═══════════════════════════════════════════════════════════
+// Google Sheets API helpers
+// ═══════════════════════════════════════════════════════════
+function sheetRange(cell) {
+  return encodeURIComponent(SHEET_NAME + '!' + cell);
+}
+
+async function sheetsWrite(updates) {
+  const resp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,
+    {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + accessToken,
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify({
+        valueInputOption: 'RAW',
+        data: updates.map(u => ({
+          range: SHEET_NAME + '!' + u.range,
+          values: [[u.value]]
+        }))
+      })
+    }
+  );
+  if (!resp.ok) throw new Error('Sheets write error: ' + await resp.text());
+  return resp.json();
+}
+
+async function sheetsReadBatch(ranges) {
+  const params = ranges.map(r => 'ranges=' + sheetRange(r)).join('&');
+  const resp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchGet?${params}`,
+    { headers: { 'Authorization': 'Bearer ' + accessToken } }
+  );
+  if (!resp.ok) throw new Error('Sheets read error: ' + await resp.text());
+  const data = await resp.json();
+  const result = {};
+  (data.valueRanges || []).forEach((vr, i) => {
+    result[ranges[i]] = (vr.values && vr.values[0] && vr.values[0][0]) || '';
+  });
+  return result;
+}
+
+// ═══════════════════════════════════════════════════════════
+// Write to Sheet — "Go" button
+// ═══════════════════════════════════════════════════════════
+btnGo.addEventListener('click', async () => {
+  if (!accessToken) { showStatus('Not signed in.', 'error'); return; }
+
+  const values = {};
+  document.querySelectorAll('.f-input').forEach(inp => {
+    if (inp.value.trim() !== '') values[inp.dataset.key] = parseFloat(inp.value);
+  });
+
+  if (!Object.keys(values).length) {
+    showStatus('No values entered — fill in at least one field.', 'error');
+    return;
+  }
+
+  btnGo.disabled = true;
+  btnGo.textContent = 'Writing…';
+  showStatus('Writing to Google Sheet…', 'info', true);
+  prereqWrap.classList.remove('show');
+
+  try {
+    // Zero-fill first
+    await sheetsWrite(ZERO_RANGES.map(r => ({ range: r, value: 0 })));
+
+    // Write real values
+    const updates = [];
+    for (const [key, val] of Object.entries(values)) {
+      const cell = CELL_MAP[key.toLowerCase().trim()];
+      if (cell !== undefined) updates.push({ range: cell, value: val });
+    }
+    await sheetsWrite(updates);
+
+    showStatus('✓ Written ' + updates.length + ' value(s) to sheet.', 'success');
+    prereqWrap.classList.add('show');
+  } catch(e) {
+    showStatus('Error: ' + e.message, 'error');
+  } finally {
+    btnGo.disabled = false;
+    btnGo.textContent = 'Go →';
+  }
+});
+
+btnClear.addEventListener('click', () => {
+  document.querySelectorAll('.f-input').forEach(i => i.value = '');
+  hideStatus();
+  prereqWrap.classList.remove('show');
+});
+
+// ═══════════════════════════════════════════════════════════
+// Write to Estimate — reads sheet, generates automation script
+// ═══════════════════════════════════════════════════════════
+btnEstimate.addEventListener('click', async () => {
+  if (!accessToken) { showStatus('Not signed in.', 'error'); return; }
+
+  btnEstimate.disabled = true;
+  btnEstimate.textContent = 'Reading sheet…';
+  showStatus('Reading computed values from sheet…', 'info', true);
+
+  try {
+    const c = await sheetsReadBatch([
+      'I13','D32','D46','D50','D56','D59','D62','D68',
+      'I9','I10','I11','I18','I19','I23','I24','I26',
+      'D86','D88','D89','D90','D91','D92','D93','D94','D99'
+    ]);
+    const n = v => parseFloat(String(v || '0').replace(/[^0-9.-]/g, '')) || 0;
+    const lender = $('chk-lender').checked;
+
+    const items = [
+      { name: 'Total Fixed Cost', qty: 1 },
+      { name: 'Total Finished SF & Unfinished (Under Roof)', qty: n(c['I13']) },
+      { name: 'Total Finished SF', qty: n(c['D46']) },
+      { name: 'Total Finished SF & Unfinished SF (Under Roof Excluding Porches)', qty: n(c['D32']) },
+      { name: 'Total Garage SF', qty: n(c['D62']) },
+      { name: 'Total 1st Floor Finished, 1st Floor Unfinished & Garage', qty: n(c['D56']) },
+      { name: 'Total 1st Floor, Garage & Porch SF', qty: n(c['D50']) },
+      { name: 'Total Finished 1st Floor SF', qty: n(c['D59']) },
+      { name: 'Total for Decks & Porches', qty: n(c['I9']) + n(c['I10']) + n(c['I11']) },
+      { name: 'Interior Stairs', qty: n(c['I23']) },
+      { name: 'Exterior Doors', qty: n(c['I18']) },
+      { name: 'Windows', qty: n(c['I19']) },
+      { name: 'Porch Columns', qty: n(c['I24']) },
+      { name: 'Interior Doors', qty: n(c['I26']) },
+      { name: 'Garage Door', qty: n(c['D68']) },
+      { name: 'Number of Baths', qty: n(c['D93']) },
+      { name: 'Accessories Allowance', qty: n(c['D86']) },
+      { name: 'Appliance Allowance', qty: 1 },
+      { name: 'Cabinet Allowance', qty: n(c['D88']) },
+      { name: 'Carpet Allowance', qty: n(c['D89']) },
+      { name: 'Countertop Allowance', qty: n(c['D90']) },
+      { name: 'Hardwood Flooring Allowance', qty: n(c['D91']) },
+      { name: 'Lighting Fixture Allowance', qty: n(c['D92']) },
+      { name: 'Plumbing Fixture Allowance', qty: n(c['D93']) },
+      { name: 'Tile Allowance', qty: n(c['D94']) },
+      { name: 'Clearing Allowance', qty: 1 },
+      { name: 'Driveway Allowance', qty: 1 },
+      { name: 'Landscaping Allowance', qty: n(c['D99']) },
+      { name: 'Tap Fees', qty: 1 },
+    ];
+    if (lender) items.push({ name: 'Preferred Lender Incentive', qty: 1 });
+
+    hideStatus();
+    openScriptModal(items);
+  } catch(e) {
+    showStatus('Error reading sheet: ' + e.message, 'error');
+  } finally {
+    btnEstimate.disabled = false;
+    btnEstimate.textContent = 'Write to Estimate';
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Script Modal
+// ═══════════════════════════════════════════════════════════
+function openScriptModal(items) {
+  const script = buildAutomationScript(items);
+  scriptBox.textContent = script;
+  modalBackdrop.classList.add('show');
+  copyConfirm.classList.remove('show');
+}
+
+modalClose.addEventListener('click', () => modalBackdrop.classList.remove('show'));
+modalBackdrop.addEventListener('click', e => {
+  if (e.target === modalBackdrop) modalBackdrop.classList.remove('show');
+});
+document.addEventListener('keydown', e => {
+  if (e.key === 'Escape') modalBackdrop.classList.remove('show');
+});
+
+btnCopyScript.addEventListener('click', async () => {
+  try {
+    await navigator.clipboard.writeText(scriptBox.textContent);
+    copyConfirm.classList.add('show');
+    setTimeout(() => copyConfirm.classList.remove('show'), 2500);
+  } catch(_) {
+    // Fallback
+    const sel = window.getSelection();
+    const range = document.createRange();
+    range.selectNodeContents(scriptBox);
+    sel.removeAllRanges();
+    sel.addRange(range);
+    document.execCommand('copy');
+    sel.removeAllRanges();
+    copyConfirm.classList.add('show');
+    setTimeout(() => copyConfirm.classList.remove('show'), 2500);
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// Automation script builder
+// Generates a self-contained IIFE with the items baked in —
+// paste into Chrome DevTools console on the BuilderTrend
+// Estimate page and press Enter.
+// ═══════════════════════════════════════════════════════════
+function buildAutomationScript(items) {
+  const itemsJSON = JSON.stringify(items);
+  return `(async function() {
+  var items = ${itemsJSON};
+  var _delay = ms => new Promise(r => setTimeout(r, ms));
+  function reactSet(inp, val) {
+    var s = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+    s.call(inp, String(val));
+    inp.dispatchEvent(new Event('input',  { bubbles: true }));
+    inp.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  function waitModalClose(max) {
+    return new Promise(res => {
+      var t = performance.now(), iv = setInterval(() => {
+        var m = document.querySelector('.ant-modal-wrap,.ant-modal-root,[class*="modal"][class*="show"]');
+        if (!m || performance.now()-t >= (max||2000)) { clearInterval(iv); res(); }
+      }, 50);
+    });
+  }
+  function isGroupHeader(n) {
+    var c = n.className||'';
+    if (c.includes('proposalFormatGroupCellTitle')||c.includes('proposalFormatGroupCellTitleReadonly')) return true;
+    var p = n.parentElement;
+    while (p && p !== document.body) {
+      var pc = p.className||'';
+      if (pc.includes('WorksheetGroupCellActions')||pc.includes('proposalFormatGroupCell')) return true;
+      p = p.parentElement;
+    }
+    return false;
+  }
+  async function setQty(name, qty, isUnitCost) {
+    var needle = name.toLowerCase(), words = needle.split(/\\s+/).filter(Boolean);
+    var si = null;
+    for (var wi = 0; wi < 20; wi++) {
+      si = document.getElementById('rc_select_17') || document.getElementById('rc_select_1');
+      if (!si) {
+        var cb = Array.from(document.querySelectorAll('button')).find(b => b.textContent&&b.textContent.includes('Collapse all'));
+        if (cb) { var p = cb.closest('[class*="header"],[class*="control"],div'); if (p) si = p.querySelector('input[role="combobox"].ant-select-selection-search-input'); }
+      }
+      if (!si) { var cc = Array.from(document.querySelectorAll('input[role="combobox"].ant-select-selection-search-input')).filter(e => { var id=e.id||''; return id&&id.startsWith('rc_select_')&&id!=='rc_select_0'&&id!=='savedFilterDropdown'; }); si = cc[0]; }
+      if (si) break; await _delay(100);
+    }
+    if (!si) { console.log('✗',name,'— search bar not found'); return; }
+    var con = si.closest('.ant-select-selector')||si.parentElement;
+    if (con) { con.click(); await _delay(200); }
+    si.focus(); await _delay(100);
+    var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+    ns.call(si, name);
+    si.dispatchEvent(new Event('input',{bubbles:true}));
+    si.dispatchEvent(new Event('change',{bubbles:true}));
+    await _delay(500);
+    var opts = document.querySelectorAll('.LineItemResult.LineItem'), clicked = false;
+    for (var o = 0; o < opts.length; o++) {
+      var ot = (opts[o].innerText||'').trim().toLowerCase();
+      if (words.every(w => ot.includes(w))) { opts[o].dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); opts[o].dispatchEvent(new MouseEvent('mouseup',{bubbles:true})); opts[o].click(); clicked=true; break; }
+    }
+    if (!clicked) { console.log('○',name,'— not in dropdown'); return; }
+    var el = null;
+    for (var a = 0; a < 15; a++) {
+      var vds = document.querySelectorAll('.ValueDisplay');
+      for (var v = 0; v < vds.length; v++) { if (!vds[v].offsetHeight||isGroupHeader(vds[v])) continue; if ((vds[v].innerText||'').trim().toLowerCase()===needle) { el=vds[v]; break; } }
+      if (!el) for (var v2 = 0; v2 < vds.length; v2++) { if (!vds[v2].offsetHeight||isGroupHeader(vds[v2])) continue; var t=(vds[v2].innerText||'').trim().toLowerCase(); if (words.every(w=>t.includes(w))) { el=vds[v2]; break; } }
+      if (el) break; await _delay(100);
+    }
+    if (!el) { console.log('○',name,'— ValueDisplay not found'); return; }
+    el.scrollIntoView({behavior:'instant',block:'center'}); await _delay(300);
+    el.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+    el.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
+    el.click(); await _delay(400);
+    var qi = null;
+    if (isUnitCost) qi = document.querySelector('input[data-testid="unitCost"],input#unitCost');
+    if (!qi) qi = document.querySelector('input[role="spinbutton"].ant-input-number-input,input[role="spinbutton"],input.ant-input-number-input');
+    if (!qi) { console.log('○',name,'— qty input not found'); return; }
+    qi.focus(); await _delay(150);
+    qi.select();
+    qi.dispatchEvent(new KeyboardEvent('keydown',{key:'a',keyCode:65,ctrlKey:true,bubbles:true}));
+    await _delay(50);
+    qi.dispatchEvent(new KeyboardEvent('keydown',{key:'Delete',keyCode:46,bubbles:true}));
+    reactSet(qi,''); qi.dispatchEvent(new Event('input',{bubbles:true})); await _delay(100);
+    var vs = String(Math.round(qty*100)/100), s2 = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype,'value').set;
+    for (var ci = 0; ci < vs.length; ci++) { var ch=vs[ci],code=ch.charCodeAt(0); qi.dispatchEvent(new KeyboardEvent('keydown',{key:ch,keyCode:code,bubbles:true})); qi.dispatchEvent(new KeyboardEvent('keypress',{key:ch,keyCode:code,bubbles:true})); s2.call(qi,vs.slice(0,ci+1)); qi.dispatchEvent(new Event('input',{bubbles:true})); qi.dispatchEvent(new KeyboardEvent('keyup',{key:ch,keyCode:code,bubbles:true})); await _delay(20); }
+    await _delay(200);
+    var sb = document.querySelector('[data-testid="saveButton"],#saveButton');
+    if (!sb) { for (var si2=0;si2<15;si2++) { await _delay(100); sb=document.querySelector('[data-testid="saveButton"],#saveButton'); if(sb) break; } }
+    if (sb) { sb.click(); await waitModalClose(2000); } else { qi.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',keyCode:13,bubbles:true})); await _delay(500); }
+    console.log('✓',name,'→',qty);
+  }
+  console.log('Keel Quick Quote — starting Write to Estimate (' + items.length + ' items)');
+  for (var i = 0; i < items.length; i++) await setQty(items[i].name, items[i].qty, items[i].isUnitCost);
+  await _delay(1500);
+  var fs = document.querySelector('.BTGridFooterCell--ellipsis span[dir="ltr"]'), tv = 0;
+  if (fs) { var fm = (fs.innerText||'').trim().match(/^\\$([\\d,]+\\.?\\d*)$/); if (fm) tv = parseFloat(fm[1].replace(/,/g,'')); }
+  if (tv > 0) { console.log('Grand total: $'+tv+' → Realtor Fees'); await setQty('Realtor Fees', tv, true); }
+  else console.warn('Could not detect grand total for Realtor Fees');
+  console.log('✓ Write to Estimate complete');
+})();`;
+}
+</script>
+
+</body>
+</html>
