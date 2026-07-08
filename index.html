@@ -934,6 +934,7 @@
     <div id="prereq-wrap" class="prereq-wrap">
       <div class="est-row">
         <button id="btn-write-estimate" class="btn-estimate">Write to Estimate</button>
+        <button id="btn-client-preview-kkq" class="btn-estimate" style="background:var(--navy);color:#fff;">Start Prelim - Budget Client Preview</button>
       </div>
     </div>
 
@@ -1366,6 +1367,38 @@ btnClear.addEventListener('click', () => {
 btnEstimate.addEventListener('click', () => {
   prereqModal.classList.add('show');
 });
+
+// "Start Prelim - Budget Client Preview" — opens tab picker in client preview mode
+const btnClientPreviewKkq = $('btn-client-preview-kkq');
+if (btnClientPreviewKkq) {
+  btnClientPreviewKkq.addEventListener('click', async () => {
+    if (!dukeExtensionReady) {
+      showStatus('Duke Estimating extension not detected. Make sure it is installed and enabled.', 'error', 6000);
+      return;
+    }
+    btnClientPreviewKkq.disabled = true;
+    btnClientPreviewKkq.textContent = 'Opening…';
+    try {
+      await new Promise((resolve) => {
+        const timeout = setTimeout(() => { cleanup(); resolve(false); }, 5000);
+        function onMessage(event) {
+          if (event.source !== window) return;
+          const data = event.data;
+          if (!data || data.source !== 'duke-ext') return;
+          if (data.type !== 'RUN_CLIENT_PREVIEW_RESULT') return;
+          cleanup();
+          resolve(!!data.ok);
+        }
+        function cleanup() { clearTimeout(timeout); window.removeEventListener('message', onMessage); }
+        window.addEventListener('message', onMessage);
+        window.postMessage({ source: 'keel-quick-quote', type: 'RUN_CLIENT_PREVIEW' }, '*');
+      });
+    } finally {
+      btnClientPreviewKkq.disabled = false;
+      btnClientPreviewKkq.textContent = 'Start Prelim - Budget Client Preview';
+    }
+  });
+}
 
 $('prereq-modal-close').addEventListener('click', () => prereqModal.classList.remove('show'));
 prereqModal.addEventListener('click', e => { if (e.target === prereqModal) prereqModal.classList.remove('show'); });
