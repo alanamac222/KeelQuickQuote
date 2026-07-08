@@ -734,6 +734,29 @@
       transition: background 0.12s, color 0.12s, border-color 0.12s;
     }
     .btn-add-row:hover { background: var(--surface); color: var(--text); border-color: var(--gold); }
+
+    /* ── Sales Notes ── */
+    #sales-notes {
+      width: 100%;
+      min-height: 120px;
+      border: 1px solid var(--border-dk);
+      border-radius: 6px;
+      padding: 10px 12px;
+      font-size: 13px;
+      color: var(--text);
+      line-height: 1.6;
+      resize: vertical;
+      outline: none;
+      font-family: inherit;
+      background: #fafbfc;
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    #sales-notes:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(232,184,75,0.2);
+      background: #fff;
+    }
+    #sales-notes::placeholder { color: #bcc5d0; }
   </style>
 </head>
 <body>
@@ -886,6 +909,12 @@
         </div>
       </div>
       <button type="button" id="btn-add-custom-row" class="btn-add-row">+ Add row</button>
+    </div>
+
+    <!-- ── Sales Notes ── -->
+    <div class="card" style="margin-bottom:14px;">
+      <div class="section-label">Sales Notes <span>internal use only — saved locally</span></div>
+      <textarea id="sales-notes" placeholder="Type notes here. Start a line with  -  to create a bullet point.&#10;&#10;Example:&#10;- Great southern-facing lot&#10;- Client interested in 2-car garage upgrade"></textarea>
     </div>
 
     <!-- ── Action Bar ── -->
@@ -1651,6 +1680,39 @@ function buildAutomationScript(items, customItems) {
   console.log('✓ Write to Estimate complete');
 })();`;
 }
+
+// ── Sales Notes ─────────────────────────────────────────────────────────────
+(function() {
+  var notesEl = document.getElementById('sales-notes');
+  if (!notesEl) return;
+  try { notesEl.value = localStorage.getItem('keelSalesNotes') || ''; } catch(e) {}
+  notesEl.addEventListener('input', function() {
+    try { localStorage.setItem('keelSalesNotes', notesEl.value); } catch(e) {}
+  });
+  notesEl.addEventListener('keydown', function(e) {
+    if (e.key !== '-') return;
+    var pos = notesEl.selectionStart;
+    var text = notesEl.value;
+    var lineStart = text.lastIndexOf('\n', pos - 1) + 1;
+    if (pos === lineStart) {
+      e.preventDefault();
+      var before = text.slice(0, pos);
+      var after  = text.slice(notesEl.selectionEnd);
+      notesEl.value = before + '• ' + after;
+      notesEl.selectionStart = notesEl.selectionEnd = pos + 2;
+      try { localStorage.setItem('keelSalesNotes', notesEl.value); } catch(e) {}
+    }
+  });
+  window.parseSalesNotes = function() {
+    var lines = (notesEl.value || '').split('\n');
+    var bullets = [], plain = [];
+    lines.forEach(function(line) {
+      if (line.startsWith('• ')) bullets.push(line.slice(2).trim());
+      else if (line.trim()) plain.push(line.trim());
+    });
+    return { bullets: bullets, plain: plain, all: lines.filter(function(l){ return l.trim(); }) };
+  };
+})();
 
 // Arrow key navigation on number inputs
 document.addEventListener('keydown', function(e) {
