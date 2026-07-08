@@ -1372,13 +1372,18 @@ btnEstimate.addEventListener('click', () => {
 const btnClientPreviewKkq = $('btn-client-preview-kkq');
 if (btnClientPreviewKkq) {
   btnClientPreviewKkq.addEventListener('click', async () => {
-    if (!dukeExtensionReady) {
-      showStatus('Duke Estimating extension not detected. Make sure it is installed and enabled.', 'error', 6000);
-      return;
-    }
     btnClientPreviewKkq.disabled = true;
     btnClientPreviewKkq.textContent = 'Opening…';
     try {
+      // Re-ping the extension in case it hadn't announced itself yet
+      if (!dukeExtensionReady) {
+        window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
+        await new Promise(r => setTimeout(r, 600));
+      }
+      if (!dukeExtensionReady) {
+        showStatus('Duke Estimating extension not detected. Make sure it is installed and enabled.', 'error', 6000);
+        return;
+      }
       await new Promise((resolve) => {
         const timeout = setTimeout(() => { cleanup(); resolve(false); }, 5000);
         function onMessage(event) {
