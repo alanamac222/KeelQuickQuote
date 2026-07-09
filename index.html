@@ -935,6 +935,7 @@
       <div class="est-row">
         <button id="btn-write-estimate" class="btn-estimate">Write to Estimate</button>
         <button id="btn-client-preview-kkq" class="btn-estimate" style="background:var(--navy);color:#fff;">Start Prelim - Budget Client Preview</button>
+        <button id="btn-open-pdf" class="btn-estimate hidden" style="background:#15803d;color:#fff;">Open Proposal as PDF</button>
       </div>
     </div>
 
@@ -1093,11 +1094,44 @@ window.addEventListener('message', (event) => {
   const data = event.data;
   if (!data || data.source !== 'duke-ext') return;
   if (data.type === 'EXTENSION_READY') dukeExtensionReady = true;
+
+  if (data.type === 'PROPOSAL_PDF_READY') {
+    const btn = $('btn-open-pdf');
+    if (btn) btn.classList.remove('hidden');
+  }
+
+  if (data.type === 'PROPOSAL_PDF_DATA') {
+    const btn = $('btn-open-pdf');
+    if (data.ok && data.data) {
+      // Open in new tab
+      window.open(data.data, '_blank');
+      // Trigger download
+      const a = document.createElement('a');
+      a.href = data.data;
+      a.download = 'Preliminary_Budget_Estimate.pdf';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    } else {
+      showStatus('PDF not available: ' + (data.error || 'unknown error'), 'error', 6000);
+    }
+    if (btn) { btn.disabled = false; btn.textContent = 'Open Proposal as PDF'; }
+  }
 });
 
 // Ask the content script (if any) to announce itself, in case it loaded
 // before this listener was attached.
 window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
+
+// "Open Proposal as PDF" — fetches stored PDF from extension and opens it
+const btnOpenPdf = $('btn-open-pdf');
+if (btnOpenPdf) {
+  btnOpenPdf.addEventListener('click', () => {
+    btnOpenPdf.disabled = true;
+    btnOpenPdf.textContent = 'Opening…';
+    window.postMessage({ source: 'keel-quick-quote', type: 'DOWNLOAD_PROPOSAL_PDF' }, '*');
+  });
+}
 
 // Sends items to the extension and waits briefly for confirmation that
 // its tab-picker window opened. Resolves false if the extension isn't
