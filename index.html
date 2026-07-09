@@ -1636,13 +1636,15 @@ btnConfirm.addEventListener('click', async () => {
       { cell: 'D18', name: 'Standard',           parentGroup: '62 - Landscaping' },
       { cell: 'D19', name: 'Extensive',          parentGroup: '62 - Landscaping' },
     ];
-    const siteOptionsRows = await sheetsReadRange('SITE OPTIONS', 'D2:D19');
+    // Read columns C (unit price) and D (selected flag) together — C2:D19
+    const siteOptionsRows = await sheetsReadRange('SITE OPTIONS', 'C2:D19');
     const siteOptions = [];
     SITE_OPTIONS_CELLS.forEach(entry => {
       const rowNum = parseInt(entry.cell.slice(1)) - 2; // D2 → index 0
       const rowData = siteOptionsRows && siteOptionsRows[rowNum];
-      const val = rowData && rowData[0];
-      if (parseFloat(val) === 1) siteOptions.push({ name: entry.name, parentGroup: entry.parentGroup });
+      const price = (rowData && parseFloat(rowData[0])) || 0; // column C
+      const val   = rowData && rowData[1];                    // column D
+      if (parseFloat(val) === 1) siteOptions.push({ name: entry.name, parentGroup: entry.parentGroup, unitCost: price });
     });
 
     btnEstimate.textContent = 'Opening tab picker…';

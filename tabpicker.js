@@ -3,14 +3,16 @@
 // ═══════════════════════════════════════════════════════════
 var pendingItems = [];
 var pendingCustomItems = [];
+var pendingSiteOptions = [];
 var pendingClientPreview = false;
 
 document.addEventListener('DOMContentLoaded', init);
 
 async function init() {
-  var data = await chrome.storage.session.get(['pendingEstimateItems','pendingCustomItems','pendingClientPreview']);
+  var data = await chrome.storage.session.get(['pendingEstimateItems','pendingCustomItems','pendingSiteOptions','pendingClientPreview']);
   pendingItems = data.pendingEstimateItems || [];
   pendingCustomItems = data.pendingCustomItems || [];
+  pendingSiteOptions = data.pendingSiteOptions || [];
   pendingClientPreview = !!data.pendingClientPreview;
 
   if (pendingClientPreview) {
@@ -132,7 +134,7 @@ async function selectTab(tab) {
     var result = await chrome.scripting.executeScript({
       target: { tabId: tab.id },
       func: writeEstimateInPage,
-      args: [pendingItems, pendingCustomItems]
+      args: [pendingItems, pendingCustomItems, pendingSiteOptions]
     });
 
     var res2 = result && result[0] && result[0].result;
@@ -145,8 +147,8 @@ async function selectTab(tab) {
         log('✓ Wrote ' + res2.ok + ' item(s) — reordering groups…');
         statusEl.innerHTML = '<span class="spin"></span>Reordering estimate groups…';
 
-        // Reorder the estimate groups into the required sequence
-        await chrome.scripting.executeScript({
+        // Reorder estimate groups by calling BT's own internal React handler
+        var reorderResult = await chrome.scripting.executeScript({
           target: { tabId: tab.id }, world: 'MAIN',
           func: async function () {
             var DESIRED = [
@@ -157,57 +159,65 @@ async function selectTab(tab) {
               'Preferred Lender Incentive'
             ];
 
-            function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+            function norm(s) { return (s || '').trim().toLowerCase().replace(/\s*\(\d+\)\s*$/, ''); }
 
-            function getGroupRows() {
-              return Array.from(document.querySelectorAll('tr.categoryRow'));
-            }
+            // Walk React fiber up from a group row to find the component
+            // that owns onUpdateProposalFormatItems and formatDataWithoutFiltering
+            var row = document.querySelector('tr.categoryRow');
+            if (!row) return { ok: false, error: 'no categoryRow found' };
+            var fiberKey = Object.keys(row).find(function (k) { return k.startsWith('__reactFiber'); });
+            if (!fiberKey) return { ok: false, error: 'no React fiber found' };
 
-            function getGroupName(row) {
-              var cell = row.querySelector('td');
-              return (cell || row).innerText.trim().split('\n')[0].trim();
-            }
-
-            async function dragBefore(src, tgt) {
-              src.scrollIntoView({ block: 'center' });
-              await sleep(120);
-              var sr = src.getBoundingClientRect();
-              var tr = tgt.getBoundingClientRect();
-              var dt = new DataTransfer();
-              var sx = sr.left + 24, sy = sr.top + sr.height / 2;
-              var tx = tr.left + 24, ty = tr.top + 3;
-
-              src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: sx, clientY: sy }));
-              await sleep(120);
-
-              // interpolate over target
-              for (var s = 1; s <= 6; s++) {
-                document.dispatchEvent(new DragEvent('drag', { bubbles: true, dataTransfer: dt,
-                  clientX: sx + (tx - sx) * s / 6, clientY: sy + (ty - sy) * s / 6 }));
-                await sleep(30);
+            var node = row[fiberKey];
+            var targetNode = null;
+            var depth = 0;
+            while (node && depth < 200) {
+              if (node.memoizedProps && node.memoizedProps.onUpdateProposalFormatItems) {
+                targetNode = node;
+                break;
               }
+              node = node.return;
+              depth++;
+            }
+            if (!targetNode) return { ok: false, error: 'onUpdateProposalFormatItems not found in fiber tree' };
 
-              tgt.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
-              await sleep(60);
-              tgt.dispatchEvent(new DragEvent('dragover',  { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
-              await sleep(80);
-              tgt.dispatchEvent(new DragEvent('drop',      { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
-              await sleep(40);
-              src.dispatchEvent(new DragEvent('dragend',   { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
-              await sleep(900); // wait for React re-render
+            var groups = targetNode.memoizedProps.formatDataWithoutFiltering;
+            if (!Array.isArray(groups) || !groups.length) return { ok: false, error: 'formatDataWithoutFiltering missing or empty' };
+
+            // Pull DESIRED groups to front, keep rest in original relative order
+            var ordered = [];
+            var remaining = groups.slice();
+            for (var d = 0; d < DESIRED.length; d++) {
+              for (var g = 0; g < remaining.length; g++) {
+                if (norm(remaining[g].title) === norm(DESIRED[d])) {
+                  ordered.push(remaining.splice(g, 1)[0]);
+                  break;
+                }
+              }
+            }
+            ordered = ordered.concat(remaining);
+
+            // Update displayOrder to match new positions
+            for (var i = 0; i < ordered.length; i++) {
+              ordered[i] = Object.assign({}, ordered[i], { displayOrder: i });
             }
 
-            for (var i = 0; i < DESIRED.length; i++) {
-              var rows = getGroupRows();
-              var srcIdx = rows.findIndex(function (r) { return getGroupName(r) === DESIRED[i]; });
-              if (srcIdx === -1 || srcIdx === i) continue;
-              await dragBefore(rows[srcIdx], rows[i]);
-            }
+            // Call BT's own handler — it handles auth, API format, everything
+            await targetNode.memoizedProps.onUpdateProposalFormatItems(ordered);
+
+            return { ok: true };
           }
         });
 
-        statusEl.className = 'progress-status success';
-        statusEl.textContent = '✓ Wrote ' + res2.ok + ' item(s) and reordered groups successfully.';
+        var rr = reorderResult && reorderResult[0] && reorderResult[0].result;
+        if (rr && !rr.ok) {
+          log('⚠ Reorder: ' + (rr.error || 'unknown error'));
+          statusEl.className = 'progress-status success';
+          statusEl.textContent = '✓ Wrote ' + res2.ok + ' item(s) — group reorder failed (see log).';
+        } else {
+          statusEl.className = 'progress-status success';
+          statusEl.textContent = '✓ Wrote ' + res2.ok + ' item(s) and reordered groups successfully.';
+        }
       }
     } else if (result && result[0] && result[0].error) {
       log('⚠ Script error: ' + result[0].error.message);
@@ -225,7 +235,7 @@ async function selectTab(tab) {
 }
 
 // Injected into the target tab via chrome.scripting.executeScript.
-async function writeEstimateInPage(itemsList, customItemsList) {
+async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) {
   try {
     var _log = [];
     var _delay = function (ms) { return new Promise(function (r) { setTimeout(r, ms); }); };
@@ -550,6 +560,34 @@ async function writeEstimateInPage(itemsList, customItemsList) {
         }
       }
 
+      // ── Step 5.5: Parent group — set to "Custom Selection Allowances" ───────
+      var pgInput = document.getElementById('parentId');
+      if (pgInput) {
+        var pgWrap = pgInput.closest('.ant-select') || pgInput.parentElement;
+        if (pgWrap) { pgWrap.click(); await _delay(300); }
+        pgInput.focus(); await _delay(100);
+        ns.call(pgInput, 'Custom Selection Allowances');
+        pgInput.dispatchEvent(new Event('input', { bubbles: true }));
+        pgInput.dispatchEvent(new Event('change', { bubbles: true }));
+        await _delay(600);
+        var pgOpts = document.querySelectorAll('.ant-select-item-option-content');
+        var pgOpt = null;
+        for (var po = 0; po < pgOpts.length; po++) {
+          if ((pgOpts[po].textContent || '').trim() === 'Custom Selection Allowances') {
+            pgOpt = pgOpts[po]; break;
+          }
+        }
+        if (pgOpt) {
+          pgOpt.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
+          pgOpt.click();
+          await _delay(400);
+        } else {
+          _log.push('⚠ createLineItem: parent group option not found — continuing');
+        }
+      } else {
+        _log.push('⚠ createLineItem: parentId input not found — continuing');
+      }
+
       // ── Step 6: Unit cost ─────────────────────────────────────────────────
       // OuterHTML shows type="text", id & data-testid = keyBase + ".unitCost", value="0.0000"
       var ucInput = document.querySelector('[data-testid="' + keyBase + '.unitCost"]')
@@ -583,6 +621,182 @@ async function writeEstimateInPage(itemsList, customItemsList) {
       _log.push('✓ Created: ' + title + ' → $' + unitCost);
     }
 
+    // Like createLineItem but scrolls to "Site Allowances" and sets a per-item parent group
+    async function createSiteItem(title, parentGroup, unitCost) {
+      var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+
+      // Step 1: Search "Site Allowances" to scroll table to that group
+      var si = document.getElementById('rc_select_17') || document.getElementById('rc_select_1');
+      if (!si) {
+        var cands = Array.from(document.querySelectorAll('input[role="combobox"].ant-select-selection-search-input'));
+        if (cands.length) si = cands[cands.length - 1];
+      }
+      if (si) {
+        var cont = si.closest('.ant-select-selector') || si.parentElement;
+        if (cont) { cont.click(); await _delay(200); }
+        si.focus(); await _delay(100);
+        ns.call(si, 'Site Allowances');
+        si.dispatchEvent(new Event('input',{bubbles:true}));
+        si.dispatchEvent(new Event('change',{bubbles:true}));
+        await _delay(900);
+        var bTags = document.querySelectorAll('b');
+        var bResult = null;
+        for (var bi=0; bi<bTags.length; bi++) {
+          if ((bTags[bi].textContent||'').trim().toLowerCase() === 'site allowances') { bResult = bTags[bi]; break; }
+        }
+        if (!bResult) {
+          var liOpts = document.querySelectorAll('.ant-select-item-option-content');
+          for (var li=0; li<liOpts.length; li++) {
+            if ((liOpts[li].textContent||'').trim().toLowerCase() === 'site allowances') { bResult = liOpts[li]; break; }
+          }
+        }
+        if (bResult) {
+          bResult.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+          bResult.click();
+          await _delay(600);
+        }
+        ns.call(si, '');
+        si.dispatchEvent(new Event('input',{bubbles:true}));
+        si.dispatchEvent(new Event('change',{bubbles:true}));
+        await _delay(300);
+      }
+
+      // Step 2: Find + button on Site Allowances group row
+      var plusBtn = null;
+      for (var attempt=0; attempt<10; attempt++) {
+        var groupRows = document.querySelectorAll('tr.k-master-row, tr[class*="GroupRow"], .WorksheetGroupRow');
+        for (var gi=0; gi<groupRows.length; gi++) {
+          var txt = (groupRows[gi].textContent||'').trim().toLowerCase();
+          if (txt.indexOf('site allowances') !== -1) {
+            var acts = groupRows[gi].querySelector('.WorksheetGroupCellActions');
+            if (acts) { plusBtn = acts.querySelector('button'); break; }
+          }
+        }
+        if (plusBtn) break;
+        await _delay(150);
+      }
+      if (!plusBtn) { _log.push('✗ createSiteItem: + button not found for Site Allowances'); return; }
+      plusBtn.scrollIntoView({ behavior:'instant', block:'center' });
+      await _delay(300);
+
+      // Step 3: Click + → Item
+      plusBtn.click();
+      await _delay(400);
+      var itemOpt = null;
+      for (var iat=0; iat<15; iat++) {
+        var opts = document.querySelectorAll('.ant-dropdown-menu-item, [class*="DropdownMenuItem"], li[role="menuitem"]');
+        for (var oi=0; oi<opts.length; oi++) {
+          if ((opts[oi].textContent||'').trim().toLowerCase() === 'item') { itemOpt = opts[oi]; break; }
+        }
+        if (itemOpt) break;
+        await _delay(100);
+      }
+      if (!itemOpt) { _log.push('✗ createSiteItem: Item option not found'); return; }
+      itemOpt.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+      itemOpt.click();
+      await _delay(600);
+
+      // Step 4: Find title input in new editing row
+      var newTitleEl = null;
+      for (var tat=0; tat<20; tat++) {
+        var editRow = document.querySelector('tr.editing, tr[class*="editing"]');
+        if (editRow) {
+          newTitleEl = editRow.querySelector('[data-testid*="itemTitle"], input[id*="itemTitle"]');
+          if (!newTitleEl) {
+            var inps = editRow.querySelectorAll('input[type="text"]');
+            if (inps.length) newTitleEl = inps[0];
+          }
+        }
+        if (!newTitleEl) {
+          var allTitleInps = document.querySelectorAll('[data-testid*="itemTitle"],[id*="itemTitle"]');
+          if (allTitleInps.length) newTitleEl = allTitleInps[allTitleInps.length-1];
+        }
+        if (newTitleEl) break;
+        await _delay(150);
+      }
+      if (!newTitleEl) { _log.push('✗ createSiteItem: title input not found'); return; }
+
+      newTitleEl.scrollIntoView({ behavior:'instant', block:'center' });
+      newTitleEl.focus(); await _delay(150);
+      ns.call(newTitleEl, title);
+      newTitleEl.dispatchEvent(new Event('input',{bubbles:true}));
+      newTitleEl.dispatchEvent(new Event('change',{bubbles:true}));
+      await _delay(300);
+
+      // Step 5: Cost code — type & pick "Site Allowances"
+      var keyBase = (newTitleEl.getAttribute('data-testid') || newTitleEl.id || '').replace(/\.itemTitle$/, '');
+      var ccInput = document.querySelector('[id="' + keyBase + '.costCodeId"]');
+      if (ccInput) {
+        var ccWrap = ccInput.closest('.ant-select') || ccInput.parentElement;
+        if (ccWrap) { ccWrap.click(); await _delay(300); }
+        ccInput.focus(); await _delay(100);
+        ns.call(ccInput, 'Site Allowances');
+        ccInput.dispatchEvent(new Event('input',{bubbles:true}));
+        ccInput.dispatchEvent(new Event('change',{bubbles:true}));
+        await _delay(800);
+        var ccOpts = document.querySelectorAll('.ant-select-item-option-content');
+        var ccOpt = null;
+        for (var co=0; co<ccOpts.length; co++) {
+          if ((ccOpts[co].textContent||'').trim() === 'Site Allowances') { ccOpt = ccOpts[co]; break; }
+        }
+        if (ccOpt) { ccOpt.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); ccOpt.click(); await _delay(400); }
+        else { _log.push('⚠ createSiteItem: cost code option not found — continuing'); }
+      }
+
+      // Step 5.5: Parent group — set to the item-specific parentGroup
+      var pgInput = document.getElementById('parentId');
+      if (pgInput) {
+        var pgWrap = pgInput.closest('.ant-select') || pgInput.parentElement;
+        if (pgWrap) { pgWrap.click(); await _delay(300); }
+        pgInput.focus(); await _delay(100);
+        ns.call(pgInput, parentGroup);
+        pgInput.dispatchEvent(new Event('input', { bubbles: true }));
+        pgInput.dispatchEvent(new Event('change', { bubbles: true }));
+        await _delay(600);
+        var pgOpts = document.querySelectorAll('.ant-select-item-option-content');
+        var pgOpt = null;
+        for (var po=0; po<pgOpts.length; po++) {
+          if ((pgOpts[po].textContent||'').trim() === parentGroup) { pgOpt = pgOpts[po]; break; }
+        }
+        if (pgOpt) { pgOpt.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); pgOpt.click(); await _delay(400); }
+        else { _log.push('⚠ createSiteItem: parent group "' + parentGroup + '" not found — continuing'); }
+      } else {
+        _log.push('⚠ createSiteItem: parentId input not found — continuing');
+      }
+
+      // Step 6: Unit cost — pulled from SITE OPTIONS sheet column C
+      if (unitCost && parseFloat(unitCost) > 0) {
+        var ucInput = document.querySelector('[data-testid="' + keyBase + '.unitCost"]')
+                   || document.querySelector('[id="' + keyBase + '.unitCost"]');
+        if (ucInput) {
+          ucInput.focus(); await _delay(150);
+          ucInput.select();
+          ns.call(ucInput, '');
+          ucInput.dispatchEvent(new Event('input',{bubbles:true}));
+          await _delay(50);
+          var siUcValStr = String(Math.round(parseFloat(unitCost) * 100) / 100);
+          ns.call(ucInput, siUcValStr);
+          ucInput.dispatchEvent(new Event('input',{bubbles:true}));
+          ucInput.dispatchEvent(new Event('change',{bubbles:true}));
+          await _delay(200);
+        } else {
+          _log.push('⚠ createSiteItem: unit cost input not found — continuing');
+        }
+      }
+
+      // Step 7: Save by clicking sidebar
+      var sideEl = document.querySelector('.ant-layout-sider, aside');
+      var saveX = sideEl ? sideEl.getBoundingClientRect().right + 5 : 10;
+      var saveY = window.innerHeight / 2;
+      var saveTarget = document.elementFromPoint(saveX, saveY) || document.body;
+      saveTarget.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:saveX,clientY:saveY}));
+      await _delay(150);
+      saveTarget.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:saveX,clientY:saveY}));
+      await _delay(900);
+
+      _log.push('✓ Site item: ' + title + ' → ' + parentGroup + (unitCost ? ' → $' + unitCost : ''));
+    }
+
     var writeStartTime = performance.now();
     for (var i = 0; i < itemsList.length; i++) {
       await setQty(itemsList[i].name, itemsList[i].qty, itemsList[i].isUnitCost);
@@ -602,6 +816,14 @@ async function writeEstimateInPage(itemsList, customItemsList) {
       _log.push('── Custom Selection Allowances ──');
       for (var ci = 0; ci < customItemsList.length; ci++) {
         await createLineItem(customItemsList[ci].name, customItemsList[ci].unitCost);
+      }
+    }
+
+    if (siteOptionsList && siteOptionsList.length) {
+      _log.push('');
+      _log.push('── Site Options ──');
+      for (var si2 = 0; si2 < siteOptionsList.length; si2++) {
+        await createSiteItem(siteOptionsList[si2].name, siteOptionsList[si2].parentGroup, siteOptionsList[si2].unitCost);
       }
     }
 
@@ -756,6 +978,52 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
     if (grandTotal > 0) log('Grand total: $' + grandTotal.toLocaleString('en-US'));
     else log('Warning: grand total not found — budget range will be skipped');
 
+    // Step 0.5: Read group flags from React state while still on estimate tab
+    log('Reading group info from estimate…');
+    var flagsRes = await chrome.scripting.executeScript({
+      target: { tabId: tab.id }, world: 'MAIN',
+      func: function () {
+        var row = document.querySelector('tr.categoryRow');
+        if (!row) return { hasCsa: false, hasLender: false };
+        var fiberKey = Object.keys(row).find(function (k) { return k.startsWith('__reactFiber'); });
+        if (!fiberKey) return { hasCsa: false, hasLender: false };
+
+        var node = row[fiberKey];
+        var groups = null;
+        var depth = 0;
+        while (node && depth < 200) {
+          if (node.memoizedProps && node.memoizedProps.formatDataWithoutFiltering) {
+            groups = node.memoizedProps.formatDataWithoutFiltering;
+            break;
+          }
+          node = node.return;
+          depth++;
+        }
+        if (!groups) return { hasCsa: false, hasLender: false };
+
+        var hasCsa = false;
+        var hasLender = false;
+        groups.forEach(function (group) {
+          var title = (group.title || '').trim().toLowerCase().replace(/\s*\(\d+\)\s*$/, '');
+          var items = group.lineItems || group.items || [];
+          if (title === 'custom selection allowances') {
+            hasCsa = items.some(function (item) {
+              var name = (item.itemTitle || '').toLowerCase();
+              return name.length > 0 && !/place.?holder/i.test(name);
+            });
+          }
+          if (title === 'preferred lender incentive') {
+            hasLender = items.some(function (item) {
+              return item.quantity === 1;
+            });
+          }
+        });
+        return { hasCsa: hasCsa, hasLender: hasLender };
+      }
+    });
+    var groupFlags = (flagsRes && flagsRes[0] && flagsRes[0].result) || { hasCsa: false, hasLender: false };
+    log('Group flags — CSA: ' + groupFlags.hasCsa + ', Lender: ' + groupFlags.hasLender);
+
     // Step 1: Click buildProposal
     log('Opening proposal builder…');
     setStatus('Opening proposal…');
@@ -792,8 +1060,8 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
         '<hr /><strong>Mechanical Systems</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp;Complete HVAC, plumbing rough &amp; finish, and electrical rough &amp; finish',
         '<hr /><strong>Insulation &amp; Drywall</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp; Full insulation to code, drywall, and interior/exterior paint',
         '<hr /><strong>Interior Finishes</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; Interior doors, trim, hardware, and custom carpentry allowance',
-        '<hr /><strong>Site Work &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp;S</strong>ite clearing, grading, driveway, and all utilities including municipal tap fees',
-        '<hr /><strong>Decks / Porches &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;P</strong>orches and decks finished per spec'
+        '<hr /><strong>Site Work</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Site clearing, grading, driveway, and all utilities including municipal tap fees',
+        '<hr /><strong>Decks / Porches</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Porches and decks finished per spec'
       ].join('');
       var closingHtml = [
         '<h2><span style="font-size:16px;"><span style="color:#000000;"><strong>BUDGET PRICING SUMMARY</strong></span></span></h2>',
@@ -985,6 +1253,30 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
         }
       });
       await delay(3000);
+
+      // CKEditor normalizes HTML on save and can re-bold things — do a final
+      // merge-patch after the save to lock in our exact intro/closing text.
+      log('Locking proposal text…');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: async function (iHtml, cHtml) {
+          var jobId = null;
+          var resources = performance.getEntriesByType('resource');
+          for (var ri = 0; ri < resources.length; ri++) {
+            var rm = resources[ri].name.match(/\/apix\/v2\/Proposals\/draft\?jobId=(\d+)/);
+            if (rm) { jobId = rm[1]; break; }
+          }
+          if (!jobId) return;
+          var xhr = new XMLHttpRequest();
+          xhr.open('PUT', '/apix/v2/Proposals/draft?jobId=' + jobId, true);
+          xhr.setRequestHeader('content-type', 'application/merge-patch+json');
+          xhr.setRequestHeader('accept', 'application/json, text/plain, */*');
+          xhr.setRequestHeader('portaltype', '1');
+          xhr.send(JSON.stringify({ introductionText: iHtml, closingText: cHtml }));
+        },
+        args: [introHtml, closingHtml]
+      });
+      await delay(1500);
     }
 
     // Step 2: Click Client Preview tab
@@ -1065,9 +1357,12 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
     setStatus('Configuring groups…');
     await chrome.scripting.executeScript({
       target: { tabId: tab.id }, world: 'MAIN',
-      func: async function () {
+      func: async function (hasCsa, hasLender) {
         function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
         var KEEP_EXPANDED = ['selection allowances', 'site allowances'];
+        if (hasCsa)    KEEP_EXPANDED.push('custom selection allowances');
+        if (hasLender) KEEP_EXPANDED.push('preferred lender incentive');
+
         var expandedItems = Array.from(document.querySelectorAll('.ant-collapse-item.ProposalGroup.ant-collapse-item-active'));
         for (var i = 0; i < expandedItems.length; i++) {
           var nameEl = expandedItems[i].querySelector('h3.ant-typography');
@@ -1087,7 +1382,8 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
             if (header2) { header2.click(); await delay(200); }
           }
         }
-      }
+      },
+      args: [groupFlags.hasCsa, groupFlags.hasLender]
     });
     await delay(800);
 
