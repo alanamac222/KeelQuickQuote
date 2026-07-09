@@ -1028,12 +1028,48 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
     await delay(800);
 
     log('✓ Client preview setup complete');
-    setStatus('Fetching proposal data for PDF…');
+    setStatus('Opening print dialog…');
 
-    // ── PDF Generation (text-based via jsPDF) ───────────────
+    // ── Open print preview (suppress dialog via content.js flag) ────────────
     try {
-      // 1. Extract jobId from tab URL, fall back to performance entries
-      var jobIdFromUrl = tab.url ? (tab.url.match(/\/jobs\/(\d+)\//) || [])[1] : null;
+      // Set flag so content.js overrides window.print on the new print tab,
+      // leaving just the clean print preview visible without any dialog.
+      await chrome.storage.session.set({ suppressNextPrint: true });
+
+      log('Clicking "…" menu to open print options…');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: function () {
+          var moreBtn = document.querySelector('[data-testid="JobProposalModalFooterRollup"]');
+          if (moreBtn) moreBtn.click();
+        }
+      });
+      await delay(600);
+
+      log('Clicking Print — print preview tab will open…');
+      await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: function () {
+          var printBtn = document.querySelector('[data-testid="printProposal"]');
+          if (printBtn) printBtn.click();
+        }
+      });
+      // Safety: clear flag after 10s in case no new tab was created
+      setTimeout(function () {
+        chrome.storage.session.remove('suppressNextPrint');
+      }, 10000);
+
+      statusEl.className = 'progress-status success';
+      statusEl.textContent = '✓ Done — print preview tab opened. Use Ctrl+P / Save as PDF when ready.';
+    } catch (pdfErr) {
+      await chrome.storage.session.remove('suppressNextPrint');
+      log('⚠ Print error: ' + pdfErr.message);
+      statusEl.className = 'progress-status success';
+      statusEl.textContent = '✓ Client preview ready. Use the "…" menu → Print to save as PDF.';
+    }
+
+    // ── dead code below kept for reference, never reached ───
+    if (false) { var jobIdFromUrl = null;
       var proposalRes = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
         func: function (urlJobId) {
@@ -1544,11 +1580,7 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
         statusEl.className = 'progress-status success';
         statusEl.textContent = '✓ Done — click "Open Proposal as PDF" on the webpage.';
       }
-    } catch (pdfErr) {
-      log('⚠ PDF generation error: ' + pdfErr.message);
-      statusEl.className = 'progress-status success';
-      statusEl.textContent = '✓ Client preview ready (PDF generation failed — ' + pdfErr.message + ').';
-    }
+    } // end if(false) dead block
 
   } catch (e) {
     log('ERROR: ' + e.message);
