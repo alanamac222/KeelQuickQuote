@@ -1618,34 +1618,34 @@ btnConfirm.addEventListener('click', async () => {
     // Row numbers match SITE OPTIONS sheet rows for column C pricing lookup.
     const SITE_DROPDOWN_MAP = {
       'so-sewer': {
-        'City (No Septic)':    { row: 2,  parentGroup: '11 - Septic/Sewer' },
-        'Conventional Septic': { row: 3,  parentGroup: '11 - Septic/Sewer' },
-        'Engineered Septic':   { row: 4,  parentGroup: '11 - Septic/Sewer' },
+        'City (No Septic)':    { row: 2,  parentGroup: '11 - Septic/Sewer',          title: 'Sewer - City (No Septic)' },
+        'Conventional Septic': { row: 3,  parentGroup: '11 - Septic/Sewer',          title: 'Sewer - Conventional Septic' },
+        'Engineered Septic':   { row: 4,  parentGroup: '11 - Septic/Sewer',          title: 'Sewer - Engineered Septic' },
       },
       'so-water': {
-        'Well':                { row: 6,  parentGroup: 'Well Allowance' },
+        'Well':                { row: 6,  parentGroup: 'Well Allowance',              title: 'Water - Well' },
         // City Water → no line item
       },
       'so-tap': {
-        'None (Well/Septic)':  { row: 7,  parentGroup: '06 - Municipal Tap Fees' },
-        'Standard (12K)':      { row: 8,  parentGroup: '06 - Municipal Tap Fees' },
-        'High (18K)':          { row: 9,  parentGroup: '06 - Municipal Tap Fees' },
+        'None (Well/Septic)':  { row: 7,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - None (Well/Septic)' },
+        'Standard (12K)':      { row: 8,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - Standard (12K)' },
+        'High (18K)':          { row: 9,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - High (18K)' },
       },
       'so-clearing': {
-        'Light':               { row: 10, parentGroup: '09 - Lot Clearing/Site Prep' },
-        'Moderate':            { row: 11, parentGroup: '09 - Lot Clearing/Site Prep' },
-        'Heavy':               { row: 12, parentGroup: '09 - Lot Clearing/Site Prep' },
+        'Light':               { row: 10, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Light' },
+        'Moderate':            { row: 11, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Moderate' },
+        'Heavy':               { row: 12, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Heavy' },
       },
       'so-driveway': {
-        'Short Gravel':        { row: 13, parentGroup: 'Driveway Allowance' },
-        'Standard (Gravel)':   { row: 14, parentGroup: 'Driveway Allowance' },
-        'Long Gravel':         { row: 15, parentGroup: 'Driveway Allowance' },
-        'Asphalt':             { row: 16, parentGroup: 'Driveway Allowance' },
+        'Short Gravel':        { row: 13, parentGroup: 'Driveway Allowance',          title: 'Driveway - Short Gravel' },
+        'Standard (Gravel)':   { row: 14, parentGroup: 'Driveway Allowance',          title: 'Driveway - Standard (Gravel)' },
+        'Long Gravel':         { row: 15, parentGroup: 'Driveway Allowance',          title: 'Driveway - Long Gravel' },
+        'Asphalt':             { row: 16, parentGroup: 'Driveway Allowance',          title: 'Driveway - Asphalt' },
       },
       'so-landscaping': {
-        'Basic':               { row: 17, parentGroup: '62 - Landscaping' },
-        'Standard':            { row: 18, parentGroup: '62 - Landscaping' },
-        'Extensive':           { row: 19, parentGroup: '62 - Landscaping' },
+        'Basic':               { row: 17, parentGroup: '62 - Landscaping',            title: 'Landscaping - Basic' },
+        'Standard':            { row: 18, parentGroup: '62 - Landscaping',            title: 'Landscaping - Standard' },
+        'Extensive':           { row: 19, parentGroup: '62 - Landscaping',            title: 'Landscaping - Extensive' },
       },
     };
 
@@ -1654,7 +1654,7 @@ btnConfirm.addEventListener('click', async () => {
       const el = document.getElementById(id);
       const val = el ? el.value : '';
       const map = SITE_DROPDOWN_MAP[id];
-      if (val && map && map[val]) selectedSiteItems.push({ name: val, row: map[val].row, parentGroup: map[val].parentGroup });
+      if (val && map && map[val]) selectedSiteItems.push({ name: map[val].title || val, row: map[val].row, parentGroup: map[val].parentGroup });
     });
 
     // Read column C (unit pricing) from SITE OPTIONS for all selected rows
