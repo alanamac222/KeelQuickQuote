@@ -735,6 +735,39 @@
     }
     .btn-add-row:hover { background: var(--surface); color: var(--text); border-color: var(--gold); }
 
+    /* ── Site Options ── */
+    .site-options-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px 18px;
+      margin-top: 6px;
+    }
+    .site-option-item label {
+      display: block;
+      font-size: 10px;
+      font-weight: 700;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .04em;
+      margin-bottom: 3px;
+    }
+    .site-option-select {
+      width: 100%;
+      height: 32px;
+      border: 1px solid var(--border-dk);
+      border-radius: 6px;
+      background: #fff;
+      font-size: 12.5px;
+      color: var(--text);
+      padding: 0 8px;
+      cursor: pointer;
+    }
+    .site-option-select:focus {
+      outline: none;
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(232,184,75,.18);
+    }
+
     /* ── Sales Notes ── */
     #sales-notes {
       width: 100%;
@@ -909,6 +942,67 @@
         </div>
       </div>
       <button type="button" id="btn-add-custom-row" class="btn-add-row">+ Add row</button>
+    </div>
+
+    <!-- ── Site Options ── -->
+    <div class="card custom-section">
+      <div class="section-label">Site Options <span>Written to SITE OPTIONS sheet tab &amp; estimate</span></div>
+      <div class="site-options-grid">
+        <div class="site-option-item">
+          <label>Sewer</label>
+          <select id="so-sewer" class="site-option-select">
+            <option value="">— Select —</option>
+            <option value="City (No Septic)">City (No Septic)</option>
+            <option value="Conventional Septic">Conventional Septic</option>
+            <option value="Engineered Septic">Engineered Septic</option>
+          </select>
+        </div>
+        <div class="site-option-item">
+          <label>Water</label>
+          <select id="so-water" class="site-option-select">
+            <option value="">— Select —</option>
+            <option value="City Water">City Water</option>
+            <option value="Well">Well</option>
+          </select>
+        </div>
+        <div class="site-option-item">
+          <label>Municipal Tap Fees</label>
+          <select id="so-tap" class="site-option-select">
+            <option value="">— Select —</option>
+            <option value="None (Well/Septic)">None (Well/Septic)</option>
+            <option value="Standard (12K)">Standard (12K)</option>
+            <option value="High (18K)">High (18K)</option>
+          </select>
+        </div>
+        <div class="site-option-item">
+          <label>Lot Clearing</label>
+          <select id="so-clearing" class="site-option-select">
+            <option value="">— Select —</option>
+            <option value="Light">Light</option>
+            <option value="Moderate">Moderate</option>
+            <option value="Heavy">Heavy</option>
+          </select>
+        </div>
+        <div class="site-option-item">
+          <label>Driveway</label>
+          <select id="so-driveway" class="site-option-select">
+            <option value="">— Select —</option>
+            <option value="Short Gravel">Short Gravel</option>
+            <option value="Standard (Gravel)">Standard (Gravel)</option>
+            <option value="Long Gravel">Long Gravel</option>
+            <option value="Asphalt">Asphalt</option>
+          </select>
+        </div>
+        <div class="site-option-item">
+          <label>Landscaping</label>
+          <select id="so-landscaping" class="site-option-select">
+            <option value="">— Select —</option>
+            <option value="Basic">Basic</option>
+            <option value="Standard">Standard</option>
+            <option value="Extensive">Extensive</option>
+          </select>
+        </div>
+      </div>
     </div>
 
     <!-- ── Sales Notes ── -->
@@ -1105,7 +1199,7 @@ window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
 // Sends items to the extension and waits briefly for confirmation that
 // its tab-picker window opened. Resolves false if the extension isn't
 // installed or doesn't respond in time, so callers can fall back.
-function tryExtensionHandoff(items, customItems) {
+function tryExtensionHandoff(items, customItems, siteOptions) {
   return new Promise((resolve) => {
     if (!dukeExtensionReady) { resolve(false); return; }
 
@@ -1123,7 +1217,7 @@ function tryExtensionHandoff(items, customItems) {
       window.removeEventListener('message', onMessage);
     }
     window.addEventListener('message', onMessage);
-    window.postMessage({ source: 'keel-quick-quote', type: 'OPEN_ESTIMATE_TAB_PICKER', items, customItems: customItems || [] }, '*');
+    window.postMessage({ source: 'keel-quick-quote', type: 'OPEN_ESTIMATE_TAB_PICKER', items, customItems: customItems || [], siteOptions: siteOptions || [] }, '*');
   });
 }
 
@@ -1249,6 +1343,23 @@ async function sheetsReadBatch(ranges) {
   return result;
 }
 
+async function sheetsWriteTab(sheetTab, updates) {
+  const data = updates.map(u => ({
+    range: sheetTab + '!' + u.range,
+    values: [[u.value]]
+  }));
+  const resp = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${SHEET_ID}/values:batchUpdate`,
+    {
+      method: 'POST',
+      headers: { 'Authorization': 'Bearer ' + accessToken, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ valueInputOption: 'RAW', data })
+    }
+  );
+  if (!resp.ok) { const t = await resp.text(); throw new Error('sheetsWriteTab: ' + resp.status + ' ' + t); }
+  return resp.json();
+}
+
 async function sheetsReadRange(sheetTab, range) {
   const r = encodeURIComponent(sheetTab + '!' + range);
   const resp = await fetch(
@@ -1342,6 +1453,39 @@ btnGo.addEventListener('click', async () => {
     // Zero-fill first, then write all values
     await sheetsWrite(ZERO_RANGES.map(r => ({ range: r, value: 0 })));
     await sheetsWrite(updates);
+
+    // Write site options to SITE OPTIONS tab
+    // Map: sewer D2-D4, water D5-D6, tap D7-D9, clearing D10-D12, driveway D13-D16, landscaping D17-D19
+    const SITE_OPTIONS_MAP = {
+      'City (No Septic)':    'D2',
+      'Conventional Septic': 'D3',
+      'Engineered Septic':   'D4',
+      'City Water':          'D5',
+      'Well':                'D6',
+      'None (Well/Septic)':  'D7',
+      'Standard (12K)':      'D8',
+      'High (18K)':          'D9',
+      'Light':               'D10',
+      'Moderate':            'D11',
+      'Heavy':               'D12',
+      'Short Gravel':        'D13',
+      'Standard (Gravel)':   'D14',
+      'Long Gravel':         'D15',
+      'Asphalt':             'D16',
+      'Basic':               'D17',
+      'Standard':            'D18',
+      'Extensive':           'D19',
+    };
+    const soZeros = [];
+    for (let r = 2; r <= 19; r++) soZeros.push({ range: 'D' + r, value: 0 });
+    await sheetsWriteTab('SITE OPTIONS', soZeros);
+    const soSelects = ['so-sewer','so-water','so-tap','so-clearing','so-driveway','so-landscaping'];
+    const soUpdates = [];
+    soSelects.forEach(id => {
+      const val = document.getElementById(id).value;
+      if (val && SITE_OPTIONS_MAP[val]) soUpdates.push({ range: SITE_OPTIONS_MAP[val], value: 1 });
+    });
+    if (soUpdates.length) await sheetsWriteTab('SITE OPTIONS', soUpdates);
 
     showStatus('✓ Written ' + updates.length + ' value(s) to sheet.', 'success');
     prereqWrap.classList.add('show');
@@ -1470,8 +1614,39 @@ btnConfirm.addEventListener('click', async () => {
       if (name && price > 0) customItems.push({ name, unitCost: price });
     });
 
+    // Collect site options from dropdowns and read their values from SITE OPTIONS sheet
+    // Only include items that have a 1 in the sheet (skip City Water / blank selections)
+    const SITE_OPTIONS_CELLS = [
+      { cell: 'D2', name: 'City (No Septic)',    parentGroup: '11 - Septic/Sewer' },
+      { cell: 'D3', name: 'Conventional Septic', parentGroup: '11 - Septic/Sewer' },
+      { cell: 'D4', name: 'Engineered Septic',   parentGroup: '11 - Septic/Sewer' },
+      // D5 City Water — skipped intentionally
+      { cell: 'D6', name: 'Well',                parentGroup: 'Well Allowance' },
+      { cell: 'D7', name: 'None (Well/Septic)',  parentGroup: '06 - Municipal Tap Fees' },
+      { cell: 'D8', name: 'Standard (12K)',      parentGroup: '06 - Municipal Tap Fees' },
+      { cell: 'D9', name: 'High (18K)',          parentGroup: '06 - Municipal Tap Fees' },
+      { cell: 'D10', name: 'Light',              parentGroup: '09 - Lot Clearing/Site Prep' },
+      { cell: 'D11', name: 'Moderate',           parentGroup: '09 - Lot Clearing/Site Prep' },
+      { cell: 'D12', name: 'Heavy',              parentGroup: '09 - Lot Clearing/Site Prep' },
+      { cell: 'D13', name: 'Short Gravel',       parentGroup: 'Driveway Allowance' },
+      { cell: 'D14', name: 'Standard (Gravel)',  parentGroup: 'Driveway Allowance' },
+      { cell: 'D15', name: 'Long Gravel',        parentGroup: 'Driveway Allowance' },
+      { cell: 'D16', name: 'Asphalt',            parentGroup: 'Driveway Allowance' },
+      { cell: 'D17', name: 'Basic',              parentGroup: '62 - Landscaping' },
+      { cell: 'D18', name: 'Standard',           parentGroup: '62 - Landscaping' },
+      { cell: 'D19', name: 'Extensive',          parentGroup: '62 - Landscaping' },
+    ];
+    const siteOptionsRows = await sheetsReadRange('SITE OPTIONS', 'D2:D19');
+    const siteOptions = [];
+    SITE_OPTIONS_CELLS.forEach(entry => {
+      const rowNum = parseInt(entry.cell.slice(1)) - 2; // D2 → index 0
+      const rowData = siteOptionsRows && siteOptionsRows[rowNum];
+      const val = rowData && rowData[0];
+      if (parseFloat(val) === 1) siteOptions.push({ name: entry.name, parentGroup: entry.parentGroup });
+    });
+
     btnEstimate.textContent = 'Opening tab picker…';
-    const handedOff = await tryExtensionHandoff(items, customItems);
+    const handedOff = await tryExtensionHandoff(items, customItems, siteOptions);
 
     if (handedOff) {
       showStatus('✓ Tab picker opened — select your BuilderTrend Estimate tab in the window that just appeared.', 'success');
