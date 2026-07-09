@@ -142,8 +142,72 @@ async function selectTab(tab) {
         statusEl.className = 'progress-status error';
         statusEl.textContent = 'Wrote ' + res2.ok + ' item(s) · ' + res2.fail + ' failed — see log above.';
       } else {
+        log('✓ Wrote ' + res2.ok + ' item(s) — reordering groups…');
+        statusEl.innerHTML = '<span class="spin"></span>Reordering estimate groups…';
+
+        // Reorder the estimate groups into the required sequence
+        await chrome.scripting.executeScript({
+          target: { tabId: tab.id }, world: 'MAIN',
+          func: async function () {
+            var DESIRED = [
+              'Base House Pricing',
+              'Selection Allowances',
+              'Site Allowances',
+              'Custom Selection Allowances',
+              'Preferred Lender Incentive'
+            ];
+
+            function sleep(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+            function getGroupRows() {
+              return Array.from(document.querySelectorAll('tr.categoryRow'));
+            }
+
+            function getGroupName(row) {
+              var cell = row.querySelector('td');
+              return (cell || row).innerText.trim().split('\n')[0].trim();
+            }
+
+            async function dragBefore(src, tgt) {
+              src.scrollIntoView({ block: 'center' });
+              await sleep(120);
+              var sr = src.getBoundingClientRect();
+              var tr = tgt.getBoundingClientRect();
+              var dt = new DataTransfer();
+              var sx = sr.left + 24, sy = sr.top + sr.height / 2;
+              var tx = tr.left + 24, ty = tr.top + 3;
+
+              src.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: sx, clientY: sy }));
+              await sleep(120);
+
+              // interpolate over target
+              for (var s = 1; s <= 6; s++) {
+                document.dispatchEvent(new DragEvent('drag', { bubbles: true, dataTransfer: dt,
+                  clientX: sx + (tx - sx) * s / 6, clientY: sy + (ty - sy) * s / 6 }));
+                await sleep(30);
+              }
+
+              tgt.dispatchEvent(new DragEvent('dragenter', { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
+              await sleep(60);
+              tgt.dispatchEvent(new DragEvent('dragover',  { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
+              await sleep(80);
+              tgt.dispatchEvent(new DragEvent('drop',      { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
+              await sleep(40);
+              src.dispatchEvent(new DragEvent('dragend',   { bubbles: true, cancelable: true, dataTransfer: dt, clientX: tx, clientY: ty }));
+              await sleep(900); // wait for React re-render
+            }
+
+            for (var i = 0; i < DESIRED.length; i++) {
+              var rows = getGroupRows();
+              var srcIdx = rows.findIndex(function (r) { return getGroupName(r) === DESIRED[i]; });
+              if (srcIdx === -1 || srcIdx === i) continue;
+              await dragBefore(rows[srcIdx], rows[i]);
+            }
+          }
+        });
+
         statusEl.className = 'progress-status success';
-        statusEl.textContent = '✓ Wrote ' + res2.ok + ' item(s) to the estimate successfully.';
+        statusEl.textContent = '✓ Wrote ' + res2.ok + ' item(s) and reordered groups successfully.';
       }
     } else if (result && result[0] && result[0].error) {
       log('⚠ Script error: ' + result[0].error.message);
@@ -1030,43 +1094,8 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
     log('✓ Client preview setup complete');
     setStatus('Opening print dialog…');
 
-    // ── Open print preview (suppress dialog via content.js flag) ────────────
-    try {
-      // Set flag so content.js overrides window.print on the new print tab,
-      // leaving just the clean print preview visible without any dialog.
-      await chrome.storage.session.set({ suppressNextPrint: true });
-
-      log('Clicking "…" menu to open print options…');
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id }, world: 'MAIN',
-        func: function () {
-          var moreBtn = document.querySelector('[data-testid="JobProposalModalFooterRollup"]');
-          if (moreBtn) moreBtn.click();
-        }
-      });
-      await delay(600);
-
-      log('Clicking Print — print preview tab will open…');
-      await chrome.scripting.executeScript({
-        target: { tabId: tab.id }, world: 'MAIN',
-        func: function () {
-          var printBtn = document.querySelector('[data-testid="printProposal"]');
-          if (printBtn) printBtn.click();
-        }
-      });
-      // Safety: clear flag after 10s in case no new tab was created
-      setTimeout(function () {
-        chrome.storage.session.remove('suppressNextPrint');
-      }, 10000);
-
-      statusEl.className = 'progress-status success';
-      statusEl.textContent = '✓ Done — print preview tab opened. Use Ctrl+P / Save as PDF when ready.';
-    } catch (pdfErr) {
-      await chrome.storage.session.remove('suppressNextPrint');
-      log('⚠ Print error: ' + pdfErr.message);
-      statusEl.className = 'progress-status success';
-      statusEl.textContent = '✓ Client preview ready. Use the "…" menu → Print to save as PDF.';
-    }
+    statusEl.className = 'progress-status success';
+    statusEl.textContent = '✓ Client preview is ready.';
 
     // ── dead code below kept for reference, never reached ───
     if (false) { var jobIdFromUrl = null;
