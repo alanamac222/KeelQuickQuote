@@ -1614,38 +1614,59 @@ btnConfirm.addEventListener('click', async () => {
       if (name && price > 0) customItems.push({ name, unitCost: price });
     });
 
-    // Collect site options from dropdowns and read their values from SITE OPTIONS sheet
-    // Only include items that have a 1 in the sheet (skip City Water / blank selections)
-    const SITE_OPTIONS_CELLS = [
-      { cell: 'D2', name: 'City (No Septic)',    parentGroup: '11 - Septic/Sewer' },
-      { cell: 'D3', name: 'Conventional Septic', parentGroup: '11 - Septic/Sewer' },
-      { cell: 'D4', name: 'Engineered Septic',   parentGroup: '11 - Septic/Sewer' },
-      // D5 City Water — skipped intentionally
-      { cell: 'D6', name: 'Well',                parentGroup: 'Well Allowance' },
-      { cell: 'D7', name: 'None (Well/Septic)',  parentGroup: '06 - Municipal Tap Fees' },
-      { cell: 'D8', name: 'Standard (12K)',      parentGroup: '06 - Municipal Tap Fees' },
-      { cell: 'D9', name: 'High (18K)',          parentGroup: '06 - Municipal Tap Fees' },
-      { cell: 'D10', name: 'Light',              parentGroup: '09 - Lot Clearing/Site Prep' },
-      { cell: 'D11', name: 'Moderate',           parentGroup: '09 - Lot Clearing/Site Prep' },
-      { cell: 'D12', name: 'Heavy',              parentGroup: '09 - Lot Clearing/Site Prep' },
-      { cell: 'D13', name: 'Short Gravel',       parentGroup: 'Driveway Allowance' },
-      { cell: 'D14', name: 'Standard (Gravel)',  parentGroup: 'Driveway Allowance' },
-      { cell: 'D15', name: 'Long Gravel',        parentGroup: 'Driveway Allowance' },
-      { cell: 'D16', name: 'Asphalt',            parentGroup: 'Driveway Allowance' },
-      { cell: 'D17', name: 'Basic',              parentGroup: '62 - Landscaping' },
-      { cell: 'D18', name: 'Standard',           parentGroup: '62 - Landscaping' },
-      { cell: 'D19', name: 'Extensive',          parentGroup: '62 - Landscaping' },
-    ];
-    // Read columns C (unit price) and D (selected flag) together — C2:D19
-    const siteOptionsRows = await sheetsReadRange('SITE OPTIONS', 'C2:D19');
-    const siteOptions = [];
-    SITE_OPTIONS_CELLS.forEach(entry => {
-      const rowNum = parseInt(entry.cell.slice(1)) - 2; // D2 → index 0
-      const rowData = siteOptionsRows && siteOptionsRows[rowNum];
-      const price = (rowData && parseFloat(rowData[0])) || 0; // column C
-      const val   = rowData && rowData[1];                    // column D
-      if (parseFloat(val) === 1) siteOptions.push({ name: entry.name, parentGroup: entry.parentGroup, unitCost: price });
+    // Collect site options directly from dropdowns — no sheet D-column read needed.
+    // Row numbers match SITE OPTIONS sheet rows for column C pricing lookup.
+    const SITE_DROPDOWN_MAP = {
+      'so-sewer': {
+        'City (No Septic)':    { row: 2,  parentGroup: '11 - Septic/Sewer' },
+        'Conventional Septic': { row: 3,  parentGroup: '11 - Septic/Sewer' },
+        'Engineered Septic':   { row: 4,  parentGroup: '11 - Septic/Sewer' },
+      },
+      'so-water': {
+        'Well':                { row: 6,  parentGroup: 'Well Allowance' },
+        // City Water → no line item
+      },
+      'so-tap': {
+        'None (Well/Septic)':  { row: 7,  parentGroup: '06 - Municipal Tap Fees' },
+        'Standard (12K)':      { row: 8,  parentGroup: '06 - Municipal Tap Fees' },
+        'High (18K)':          { row: 9,  parentGroup: '06 - Municipal Tap Fees' },
+      },
+      'so-clearing': {
+        'Light':               { row: 10, parentGroup: '09 - Lot Clearing/Site Prep' },
+        'Moderate':            { row: 11, parentGroup: '09 - Lot Clearing/Site Prep' },
+        'Heavy':               { row: 12, parentGroup: '09 - Lot Clearing/Site Prep' },
+      },
+      'so-driveway': {
+        'Short Gravel':        { row: 13, parentGroup: 'Driveway Allowance' },
+        'Standard (Gravel)':   { row: 14, parentGroup: 'Driveway Allowance' },
+        'Long Gravel':         { row: 15, parentGroup: 'Driveway Allowance' },
+        'Asphalt':             { row: 16, parentGroup: 'Driveway Allowance' },
+      },
+      'so-landscaping': {
+        'Basic':               { row: 17, parentGroup: '62 - Landscaping' },
+        'Standard':            { row: 18, parentGroup: '62 - Landscaping' },
+        'Extensive':           { row: 19, parentGroup: '62 - Landscaping' },
+      },
+    };
+
+    const selectedSiteItems = [];
+    ['so-sewer','so-water','so-tap','so-clearing','so-driveway','so-landscaping'].forEach(id => {
+      const el = document.getElementById(id);
+      const val = el ? el.value : '';
+      const map = SITE_DROPDOWN_MAP[id];
+      if (val && map && map[val]) selectedSiteItems.push({ name: val, row: map[val].row, parentGroup: map[val].parentGroup });
     });
+
+    // Read column C (unit pricing) from SITE OPTIONS for all selected rows
+    const siteOptions = [];
+    if (selectedSiteItems.length) {
+      const cRows = await sheetsReadRange('SITE OPTIONS', 'C2:C19');
+      selectedSiteItems.forEach(item => {
+        const rowData = cRows && cRows[item.row - 2]; // C2 → index 0, C3 → index 1, …
+        const unitCost = parseFloat(String((rowData && rowData[0]) || '0').replace(/[^0-9.-]/g, '')) || 0;
+        siteOptions.push({ name: item.name, parentGroup: item.parentGroup, unitCost });
+      });
+    }
 
     btnEstimate.textContent = 'Opening tab picker…';
     const handedOff = await tryExtensionHandoff(items, customItems, siteOptions);
