@@ -341,6 +341,30 @@
       cursor: pointer;
     }
 
+    .trees-label {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      font-size: 13px;
+      color: var(--text);
+      white-space: nowrap;
+    }
+    .trees-label input[type="number"] {
+      width: 62px;
+      height: 32px;
+      padding: 0 8px;
+      border: 1px solid var(--border-dk);
+      border-radius: 6px;
+      font-size: 13px;
+      color: var(--text);
+      background: var(--card);
+      text-align: center;
+    }
+    .trees-label input[type="number"]:focus {
+      outline: none;
+      border-color: var(--navy);
+    }
+
     .btn-go {
       height: 40px;
       padding: 0 32px;
@@ -923,6 +947,10 @@
         <input type="checkbox" id="chk-lender">
         Preferred Lender Incentive
       </label>
+      <label class="trees-label">
+        <input type="number" id="inp-trees" min="0" step="1" placeholder="0">
+        Trees to Remove
+      </label>
       <button id="btn-go" class="btn-go">Go →</button>
       <button id="btn-clear" class="btn-ghost">Clear</button>
     </div>
@@ -935,7 +963,6 @@
       <div class="est-row">
         <button id="btn-write-estimate" class="btn-estimate">Write to Estimate</button>
         <button id="btn-client-preview-kkq" class="btn-estimate" style="background:var(--navy);color:#fff;">Start Prelim - Budget Client Preview</button>
-        <button id="btn-open-pdf" class="btn-estimate hidden" style="background:#15803d;color:#fff;">Open Proposal as PDF</button>
       </div>
     </div>
 
@@ -1095,43 +1122,13 @@ window.addEventListener('message', (event) => {
   if (!data || data.source !== 'duke-ext') return;
   if (data.type === 'EXTENSION_READY') dukeExtensionReady = true;
 
-  if (data.type === 'PROPOSAL_PDF_READY') {
-    const btn = $('btn-open-pdf');
-    if (btn) btn.classList.remove('hidden');
-  }
 
-  if (data.type === 'PROPOSAL_PDF_DATA') {
-    const btn = $('btn-open-pdf');
-    if (data.ok && data.data) {
-      // Open in new tab
-      window.open(data.data, '_blank');
-      // Trigger download
-      const a = document.createElement('a');
-      a.href = data.data;
-      a.download = 'Preliminary_Budget_Estimate.pdf';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-    } else {
-      showStatus('PDF not available: ' + (data.error || 'unknown error'), 'error', 6000);
-    }
-    if (btn) { btn.disabled = false; btn.textContent = 'Open Proposal as PDF'; }
-  }
 });
 
 // Ask the content script (if any) to announce itself, in case it loaded
 // before this listener was attached.
 window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
 
-// "Open Proposal as PDF" — fetches stored PDF from extension and opens it
-const btnOpenPdf = $('btn-open-pdf');
-if (btnOpenPdf) {
-  btnOpenPdf.addEventListener('click', () => {
-    btnOpenPdf.disabled = true;
-    btnOpenPdf.textContent = 'Opening…';
-    window.postMessage({ source: 'keel-quick-quote', type: 'DOWNLOAD_PROPOSAL_PDF' }, '*');
-  });
-}
 
 // Sends items to the extension and waits briefly for confirmation that
 // its tab-picker window opened. Resolves false if the extension isn't
@@ -1459,6 +1456,7 @@ btnConfirm.addEventListener('click', async () => {
     ]);
     const n = v => parseFloat(String(v || '0').replace(/[^0-9.-]/g, '')) || 0;
     const lender = $('chk-lender').checked;
+    const treesQty = parseInt($('inp-trees').value) || 0;
 
     const items = [
       { name: 'Total Fixed Cost', qty: 1 },
@@ -1492,6 +1490,7 @@ btnConfirm.addEventListener('click', async () => {
       { name: 'Tap Fees', qty: 1 },
     ];
     if (lender) items.push({ name: 'Preferred Lender Incentive', qty: 1 });
+    if (treesQty > 0) items.push({ name: 'Tree Removal', qty: treesQty });
 
     // Collect custom allowance rows (name + price both required)
     const customItems = [];
