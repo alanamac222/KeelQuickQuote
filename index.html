@@ -1627,25 +1627,25 @@ btnConfirm.addEventListener('click', async () => {
         // City Water → no line item
       },
       'so-tap': {
-        'None (Well/Septic)':  { row: 7,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - None (Well/Septic)' },
-        'Standard (12K)':      { row: 8,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - Standard (12K)' },
-        'High (18K)':          { row: 9,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - High (18K)' },
+        'None (Well/Septic)':  { row: 7,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - None (Well/Septic)', existingLine: 'Tap Fees' },
+        'Standard (12K)':      { row: 8,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - Standard (12K)',      existingLine: 'Tap Fees' },
+        'High (18K)':          { row: 9,  parentGroup: '06 - Municipal Tap Fees',    title: 'Municipal Tap Fees - High (18K)',           existingLine: 'Tap Fees' },
       },
       'so-clearing': {
-        'Light':               { row: 10, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Light' },
-        'Moderate':            { row: 11, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Moderate' },
-        'Heavy':               { row: 12, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Heavy' },
+        'Light':               { row: 10, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Light',    existingLine: 'Clearing Allowance' },
+        'Moderate':            { row: 11, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Moderate', existingLine: 'Clearing Allowance' },
+        'Heavy':               { row: 12, parentGroup: '09 - Lot Clearing/Site Prep', title: 'Lot Clearing - Heavy',    existingLine: 'Clearing Allowance' },
       },
       'so-driveway': {
-        'Short Gravel':        { row: 13, parentGroup: 'Driveway Allowance',          title: 'Driveway - Short Gravel' },
-        'Standard (Gravel)':   { row: 14, parentGroup: 'Driveway Allowance',          title: 'Driveway - Standard (Gravel)' },
-        'Long Gravel':         { row: 15, parentGroup: 'Driveway Allowance',          title: 'Driveway - Long Gravel' },
-        'Asphalt':             { row: 16, parentGroup: 'Driveway Allowance',          title: 'Driveway - Asphalt' },
+        'Short Gravel':        { row: 13, parentGroup: 'Driveway Allowance', title: 'Driveway - Short Gravel',       existingLine: 'Driveway Allowance' },
+        'Standard (Gravel)':   { row: 14, parentGroup: 'Driveway Allowance', title: 'Driveway - Standard (Gravel)', existingLine: 'Driveway Allowance' },
+        'Long Gravel':         { row: 15, parentGroup: 'Driveway Allowance', title: 'Driveway - Long Gravel',       existingLine: 'Driveway Allowance' },
+        'Asphalt':             { row: 16, parentGroup: 'Driveway Allowance', title: 'Driveway - Asphalt',           existingLine: 'Driveway Allowance' },
       },
       'so-landscaping': {
-        'Basic':               { row: 17, parentGroup: '62 - Landscaping',            title: 'Landscaping - Basic' },
-        'Standard':            { row: 18, parentGroup: '62 - Landscaping',            title: 'Landscaping - Standard' },
-        'Extensive':           { row: 19, parentGroup: '62 - Landscaping',            title: 'Landscaping - Extensive' },
+        'Basic':               { row: 17, parentGroup: '62 - Landscaping', title: 'Landscaping - Basic',     existingLine: 'Landscaping Allowance' },
+        'Standard':            { row: 18, parentGroup: '62 - Landscaping', title: 'Landscaping - Standard',  existingLine: 'Landscaping Allowance' },
+        'Extensive':           { row: 19, parentGroup: '62 - Landscaping', title: 'Landscaping - Extensive', existingLine: 'Landscaping Allowance' },
       },
     };
 
@@ -1664,7 +1664,7 @@ btnConfirm.addEventListener('click', async () => {
       selectedSiteItems.forEach(item => {
         const rowData = cRows && cRows[item.row - 2]; // C2 → index 0, C3 → index 1, …
         const unitCost = parseFloat(String((rowData && rowData[0]) || '0').replace(/[^0-9.-]/g, '')) || 0;
-        siteOptions.push({ name: item.name, parentGroup: item.parentGroup, unitCost });
+        siteOptions.push({ name: item.name, parentGroup: item.parentGroup, unitCost, existingLine: item.existingLine || null });
       });
     }
 
