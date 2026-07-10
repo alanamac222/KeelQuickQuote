@@ -625,11 +625,11 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
     async function createSiteItem(title, parentGroup, unitCost) {
       var ns = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
 
-      // Step 1: Search "Site Allowances" to scroll table to that group
+      // Step 1: Search "Site Allowances" to scroll table to that group — mirrors createLineItem exactly
       var si = document.getElementById('rc_select_17') || document.getElementById('rc_select_1');
       if (!si) {
         var cands = Array.from(document.querySelectorAll('input[role="combobox"].ant-select-selection-search-input'));
-        if (cands.length) si = cands[cands.length - 1];
+        si = cands.find(function(el){ var id=el.id||''; return id.startsWith('rc_select_') && id!=='rc_select_0'; });
       }
       if (si) {
         var cont = si.closest('.ant-select-selector') || si.parentElement;
@@ -639,37 +639,28 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
         si.dispatchEvent(new Event('input',{bubbles:true}));
         si.dispatchEvent(new Event('change',{bubbles:true}));
         await _delay(900);
-        var bTags = document.querySelectorAll('b');
-        var bResult = null;
-        for (var bi=0; bi<bTags.length; bi++) {
-          if ((bTags[bi].textContent||'').trim().toLowerCase() === 'site allowances') { bResult = bTags[bi]; break; }
+        var siResult = null;
+        var liItems = document.querySelectorAll('.LineItemResult, [class*="LineItem"][class*="Result"]');
+        for (var li=0; li<liItems.length; li++) {
+          if ((liItems[li].innerText||'').trim().toLowerCase() === 'site allowances') { siResult = liItems[li]; break; }
         }
-        if (!bResult) {
-          var liOpts = document.querySelectorAll('.ant-select-item-option-content');
-          for (var li=0; li<liOpts.length; li++) {
-            if ((liOpts[li].textContent||'').trim().toLowerCase() === 'site allowances') { bResult = liOpts[li]; break; }
-          }
+        if (siResult) {
+          siResult.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+          siResult.click();
+          await _delay(700);
         }
-        if (bResult) {
-          bResult.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
-          bResult.click();
-          await _delay(600);
-        }
-        ns.call(si, '');
-        si.dispatchEvent(new Event('input',{bubbles:true}));
-        si.dispatchEvent(new Event('change',{bubbles:true}));
-        await _delay(300);
       }
 
-      // Step 2: Find + button on Site Allowances group row
+      // Step 2: Find + button — search is still active so the row is in view
       var plusBtn = null;
-      for (var attempt=0; attempt<10; attempt++) {
-        var groupRows = document.querySelectorAll('tr.k-master-row, tr[class*="GroupRow"], .WorksheetGroupRow');
-        for (var gi=0; gi<groupRows.length; gi++) {
-          var txt = (groupRows[gi].textContent||'').trim().toLowerCase();
-          if (txt.indexOf('site allowances') !== -1) {
-            var acts = groupRows[gi].querySelector('.WorksheetGroupCellActions');
-            if (acts) { plusBtn = acts.querySelector('button'); break; }
+      for (var siat=0; siat<20; siat++) {
+        var siRows = document.querySelectorAll('.WorksheetGroupCellActions');
+        for (var siri=0; siri<siRows.length; siri++) {
+          var siTitleEl = siRows[siri].querySelector('.proposalFormatGroupCellTitle');
+          if (siTitleEl && (siTitleEl.innerText||'').trim().toLowerCase() === 'site allowances') {
+            var siCandidate = siRows[siri].querySelector('button.AddItemsDropdown') ||
+              (siRows[siri].parentElement && siRows[siri].parentElement.querySelector('button.AddItemsDropdown'));
+            if (siCandidate) { plusBtn = siCandidate; break; }
           }
         }
         if (plusBtn) break;
@@ -679,7 +670,10 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
       plusBtn.scrollIntoView({ behavior:'instant', block:'center' });
       await _delay(300);
 
-      // Step 3: Click + → Item
+      // Step 3: Click + → Item — same as createLineItem
+      var siExistingIds = new Set(Array.from(document.querySelectorAll('[data-testid*="itemTitle"]')).map(function(e){ return e.id; }));
+      plusBtn.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+      plusBtn.dispatchEvent(new MouseEvent('mouseup',{bubbles:true}));
       plusBtn.click();
       await _delay(400);
       var itemOpt = null;
@@ -696,20 +690,24 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
       itemOpt.click();
       await _delay(600);
 
-      // Step 4: Find title input in new editing row
+      // Step 4: Find title input — same approach as createLineItem
+      // Clear search bar first so the table re-renders and shows the new editing row
+      if (si) {
+        ns.call(si, '');
+        si.dispatchEvent(new Event('input',{bubbles:true}));
+        si.dispatchEvent(new Event('change',{bubbles:true}));
+        await _delay(600);
+      }
       var newTitleEl = null;
-      for (var tat=0; tat<20; tat++) {
-        var editRow = document.querySelector('tr.editing, tr[class*="editing"]');
+      for (var tat=0; tat<30; tat++) {
+        var editRow = document.querySelector('tr.editing');
         if (editRow) {
-          newTitleEl = editRow.querySelector('[data-testid*="itemTitle"], input[id*="itemTitle"]');
-          if (!newTitleEl) {
-            var inps = editRow.querySelectorAll('input[type="text"]');
-            if (inps.length) newTitleEl = inps[0];
-          }
+          newTitleEl = editRow.querySelector('input[id*="itemTitle"], [data-testid*="itemTitle"]');
+          if (newTitleEl) break;
         }
-        if (!newTitleEl) {
-          var allTitleInps = document.querySelectorAll('[data-testid*="itemTitle"],[id*="itemTitle"]');
-          if (allTitleInps.length) newTitleEl = allTitleInps[allTitleInps.length-1];
+        var allTitleInps = document.querySelectorAll('[data-testid*="itemTitle"], input[id*="itemTitle"]');
+        for (var tt=0; tt<allTitleInps.length; tt++) {
+          if (!siExistingIds.has(allTitleInps[tt].id)) { newTitleEl = allTitleInps[tt]; break; }
         }
         if (newTitleEl) break;
         await _delay(150);
@@ -723,45 +721,81 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
       newTitleEl.dispatchEvent(new Event('change',{bubbles:true}));
       await _delay(300);
 
-      // Step 5: Cost code — type & pick "Site Allowances"
+      // Step 5: Cost code — type the parent group name (e.g. "06 - Municipal Tap Fees") to
+      // find the matching cost code, which also makes the parentId field appear in the form.
       var keyBase = (newTitleEl.getAttribute('data-testid') || newTitleEl.id || '').replace(/\.itemTitle$/, '');
       var ccInput = document.querySelector('[id="' + keyBase + '.costCodeId"]');
       if (ccInput) {
         var ccWrap = ccInput.closest('.ant-select') || ccInput.parentElement;
-        if (ccWrap) { ccWrap.click(); await _delay(300); }
-        ccInput.focus(); await _delay(100);
-        ns.call(ccInput, 'Site Allowances');
-        ccInput.dispatchEvent(new Event('input',{bubbles:true}));
-        ccInput.dispatchEvent(new Event('change',{bubbles:true}));
-        await _delay(800);
-        var ccOpts = document.querySelectorAll('.ant-select-item-option-content');
+        if (ccWrap) { ccWrap.click(); await _delay(400); }
+        ccInput.focus(); await _delay(200);
+        document.execCommand('selectAll', false, null);
+        document.execCommand('delete', false, null);
+        await _delay(100);
+        document.execCommand('insertText', false, parentGroup);
+        await _delay(1200);
         var ccOpt = null;
-        for (var co=0; co<ccOpts.length; co++) {
-          if ((ccOpts[co].textContent||'').trim() === 'Site Allowances') { ccOpt = ccOpts[co]; break; }
+        var allCcOpts = document.querySelectorAll('.ant-select-item-option-content');
+        for (var co=0; co<allCcOpts.length; co++) {
+          if ((allCcOpts[co].textContent||'').trim() === parentGroup) { ccOpt = allCcOpts[co]; break; }
         }
-        if (ccOpt) { ccOpt.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); ccOpt.click(); await _delay(400); }
-        else { _log.push('⚠ createSiteItem: cost code option not found — continuing'); }
+        // Fallback: if parent group name isn't a cost code, use "09 - Lot Clearing/Site Prep"
+        if (!ccOpt) {
+          document.execCommand('selectAll', false, null);
+          document.execCommand('delete', false, null);
+          await _delay(100);
+          document.execCommand('insertText', false, '09 - Lot Clearing');
+          await _delay(1200);
+          allCcOpts = document.querySelectorAll('.ant-select-item-option-content');
+          for (var co2=0; co2<allCcOpts.length; co2++) {
+            if ((allCcOpts[co2].textContent||'').trim() === '09 - Lot Clearing/Site Prep') { ccOpt = allCcOpts[co2]; break; }
+          }
+        }
+        if (ccOpt) {
+          var ccOptParent = ccOpt.closest('.ant-select-item-option') || ccOpt.parentElement;
+          ccOptParent.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}));
+          await _delay(80);
+          ccOptParent.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true}));
+          ccOptParent.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+          await _delay(600);
+          _log.push('✓ createSiteItem: cost code set');
+        } else { _log.push('⚠ createSiteItem: cost code option not found — continuing'); }
+      } else {
+        _log.push('⚠ createSiteItem: cost code input not found (keyBase=' + keyBase + ')');
       }
 
-      // Step 5.5: Parent group — set to the item-specific parentGroup
-      var pgInput = document.getElementById('parentId');
+      // Step 5.5: Parent group — wait for it to appear after cost code is set, then type & pick
+      var pgInput = null;
+      for (var pgwait=0; pgwait<20; pgwait++) {
+        pgInput = document.getElementById('parentId');
+        if (pgInput) break;
+        await _delay(200);
+      }
       if (pgInput) {
         var pgWrap = pgInput.closest('.ant-select') || pgInput.parentElement;
-        if (pgWrap) { pgWrap.click(); await _delay(300); }
-        pgInput.focus(); await _delay(100);
-        ns.call(pgInput, parentGroup);
-        pgInput.dispatchEvent(new Event('input', { bubbles: true }));
-        pgInput.dispatchEvent(new Event('change', { bubbles: true }));
-        await _delay(600);
+        if (pgWrap) { pgWrap.click(); await _delay(400); }
+        pgInput.focus(); await _delay(200);
+        document.execCommand('selectAll', false, null);
+        document.execCommand('delete', false, null);
+        await _delay(100);
+        document.execCommand('insertText', false, parentGroup);
+        await _delay(1000);
         var pgOpts = document.querySelectorAll('.ant-select-item-option-content');
         var pgOpt = null;
         for (var po=0; po<pgOpts.length; po++) {
           if ((pgOpts[po].textContent||'').trim() === parentGroup) { pgOpt = pgOpts[po]; break; }
         }
-        if (pgOpt) { pgOpt.dispatchEvent(new MouseEvent('mousedown',{bubbles:true})); pgOpt.click(); await _delay(400); }
-        else { _log.push('⚠ createSiteItem: parent group "' + parentGroup + '" not found — continuing'); }
+        if (pgOpt) {
+          var pgOptParent = pgOpt.closest('.ant-select-item-option') || pgOpt.parentElement;
+          pgOptParent.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,cancelable:true}));
+          await _delay(80);
+          pgOptParent.dispatchEvent(new MouseEvent('mouseup',{bubbles:true,cancelable:true}));
+          pgOptParent.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true}));
+          await _delay(500);
+          _log.push('✓ createSiteItem: parent group set to ' + parentGroup);
+        } else { _log.push('⚠ createSiteItem: parent group "' + parentGroup + '" not found — continuing'); }
       } else {
-        _log.push('⚠ createSiteItem: parentId input not found — continuing');
+        _log.push('⚠ createSiteItem: parentId input not found after waiting');
       }
 
       // Step 6: Unit cost — pulled from SITE OPTIONS sheet column C
@@ -797,9 +831,151 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
       _log.push('✓ Site item: ' + title + ' → ' + parentGroup + (unitCost ? ' → $' + unitCost : ''));
     }
 
+    // Build lookup: existingLine name → siteOption (for items that edit in place)
+    var editableItems = {};
+    if (siteOptionsList) {
+      for (var ei = 0; ei < siteOptionsList.length; ei++) {
+        if (siteOptionsList[ei].existingLine) {
+          editableItems[siteOptionsList[ei].existingLine] = siteOptionsList[ei];
+        }
+      }
+    }
+
+    async function editExistingItem(searchName, newTitle, unitCost) {
+      var nsE = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
+
+      // Step 1: Search for item → click LineItemResult to open edit panel
+      var siE = document.getElementById('rc_select_17') || document.getElementById('rc_select_1');
+      if (!siE) {
+        var candsE = Array.from(document.querySelectorAll('input[role="combobox"].ant-select-selection-search-input'));
+        siE = candsE.find(function(el){ var id=el.id||''; return id.startsWith('rc_select_') && id!=='rc_select_0'; });
+      }
+      if (siE) {
+        var contE = siE.closest('.ant-select-selector') || siE.parentElement;
+        if (contE) { contE.click(); await _delay(200); }
+        siE.focus(); await _delay(100);
+        nsE.call(siE, searchName);
+        siE.dispatchEvent(new Event('input',{bubbles:true}));
+        siE.dispatchEvent(new Event('change',{bubbles:true}));
+        await _delay(900);
+        var eResult = null;
+        var eItems = document.querySelectorAll('.LineItemResult, [class*="LineItem"][class*="Result"]');
+        for (var eli=0; eli<eItems.length; eli++) {
+          if ((eItems[eli].innerText||'').trim().toLowerCase() === searchName.toLowerCase()) { eResult = eItems[eli]; break; }
+        }
+        if (eResult) {
+          eResult.dispatchEvent(new MouseEvent('mousedown',{bubbles:true}));
+          eResult.click();
+          await _delay(1000);
+        }
+        nsE.call(siE, '');
+        siE.dispatchEvent(new Event('input',{bubbles:true}));
+        siE.dispatchEvent(new Event('change',{bubbles:true}));
+        await _delay(400);
+      }
+
+      // Step 2: Find the exact <b> tag in the table with matching text → click its row to open edit panel
+      var targetRow = null;
+      for (var tdi=0; tdi<20; tdi++) {
+        var bTags = document.querySelectorAll('tr.proposalBaseLineItemContainerRow b');
+        for (var tdi2=0; tdi2<bTags.length; tdi2++) {
+          if ((bTags[tdi2].textContent||'').trim().toLowerCase() === searchName.toLowerCase()) {
+            targetRow = bTags[tdi2].closest('tr.proposalBaseLineItemContainerRow');
+            break;
+          }
+        }
+        if (targetRow) break;
+        await _delay(150);
+      }
+      if (!targetRow) { _log.push('⚠ editExistingItem: row not found for ' + searchName); return; }
+      targetRow.click();
+      await _delay(800);
+
+      // Step 3: Click the title ValueDisplay in the side panel to open the title input
+      var titleDisplay = null;
+      for (var tdd=0; tdd<15; tdd++) {
+        var tDisplays = document.querySelectorAll('.ValueDisplay[data-testid$=".itemTitle"]');
+        for (var tdi3=0; tdi3<tDisplays.length; tdi3++) {
+          if ((tDisplays[tdi3].textContent||'').trim().toLowerCase() === searchName.toLowerCase()) {
+            titleDisplay = tDisplays[tdi3]; break;
+          }
+        }
+        if (titleDisplay) break;
+        await _delay(100);
+      }
+      if (titleDisplay) {
+        titleDisplay.click();
+        await _delay(400);
+      } else { _log.push('⚠ editExistingItem: title ValueDisplay not found for ' + searchName); }
+
+      var titleInp = null;
+      for (var tii=0; tii<15; tii++) {
+        titleInp = document.querySelector('input[data-testid="itemTitle"]');
+        if (titleInp) break;
+        await _delay(100);
+      }
+      if (titleInp) {
+        titleInp.focus();
+        document.execCommand('selectAll', false, null);
+        document.execCommand('delete', false, null);
+        document.execCommand('insertText', false, newTitle);
+        await _delay(300);
+      } else { _log.push('⚠ editExistingItem: title input did not appear for ' + searchName); }
+
+      // Step 4: Click unit cost cell in same row → set cost
+      var costCell = targetRow.querySelector('td[data-testid="cell-unitCost"] .ValueDisplay') ||
+                     targetRow.querySelector('td[data-testid="cell-unitCost"]');
+      if (costCell) {
+        costCell.click();
+        await _delay(400);
+        var costInp = null;
+        for (var cii=0; cii<15; cii++) {
+          costInp = document.querySelector('input[data-testid="unitCost"]');
+          if (costInp) break;
+          await _delay(100);
+        }
+        if (costInp) {
+          costInp.focus();
+          document.execCommand('selectAll', false, null);
+          document.execCommand('delete', false, null);
+          document.execCommand('insertText', false, String(unitCost));
+          await _delay(300);
+        } else { _log.push('⚠ editExistingItem: cost input did not appear for ' + searchName); }
+      } else { _log.push('⚠ editExistingItem: cost cell not found for ' + searchName); }
+
+      // Step 4: First save — coordinate click to trigger dirty-tracking prompt
+      var sideEl = document.querySelector('.ant-layout-sider, aside');
+      var saveX = sideEl ? sideEl.getBoundingClientRect().right + 5 : 10;
+      var saveY = window.innerHeight / 2;
+      var saveTarget = document.elementFromPoint(saveX, saveY) || document.body;
+      saveTarget.dispatchEvent(new MouseEvent('mousedown',{bubbles:true,clientX:saveX,clientY:saveY}));
+      await _delay(150);
+      saveTarget.dispatchEvent(new MouseEvent('click',{bubbles:true,clientX:saveX,clientY:saveY}));
+      await _delay(900);
+
+      // Step 5: Second save — click the Save button on the dirty-tracking popup
+      var dirtySave = null;
+      for (var ds=0; ds<15; ds++) {
+        dirtySave = document.querySelector('[data-testid="dirtyTrackingSave"]');
+        if (dirtySave) break;
+        await _delay(150);
+      }
+      if (dirtySave) {
+        dirtySave.click();
+        await _delay(800);
+      }
+
+      _log.push('✓ editExistingItem: ' + searchName + ' → "' + newTitle + '" $' + unitCost);
+    }
+
     var writeStartTime = performance.now();
     for (var i = 0; i < itemsList.length; i++) {
-      await setQty(itemsList[i].name, itemsList[i].qty, itemsList[i].isUnitCost);
+      var editOpt = editableItems[itemsList[i].name];
+      if (editOpt) {
+        await editExistingItem(itemsList[i].name, editOpt.name, editOpt.unitCost);
+      } else {
+        await setQty(itemsList[i].name, itemsList[i].qty, itemsList[i].isUnitCost);
+      }
     }
 
     await _delay(1500);
@@ -823,6 +999,7 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
       _log.push('');
       _log.push('── Site Options ──');
       for (var si2 = 0; si2 < siteOptionsList.length; si2++) {
+        if (siteOptionsList[si2].existingLine) continue;
         await createSiteItem(siteOptionsList[si2].name, siteOptionsList[si2].parentGroup, siteOptionsList[si2].unitCost);
       }
     }
@@ -865,51 +1042,64 @@ async function writeEstimateInPage(itemsList, customItemsList, siteOptionsList) 
           var si = await getDelSearchInput();
           if (!si) { _log.push('⚠ Search bar not found — stopping placeholder delete'); break; }
 
+          var nsD = Object.getOwnPropertyDescriptor(HTMLInputElement.prototype, 'value').set;
           var selEl = si.closest('.ant-select-selector') || si.parentElement;
           if (selEl) { selEl.click(); await _delay(200); }
           si.focus();
           await _delay(100);
-          reactSet(si, '');
-          await _delay(100);
-          reactSet(si, 'place');
+          nsD.call(si, 'Place Holder');
+          si.dispatchEvent(new Event('input', { bubbles: true }));
+          si.dispatchEvent(new Event('change', { bubbles: true }));
           await _delay(1200);
 
           var target = null;
           for (var ri = 0; ri < 30; ri++) {
-            target = document.querySelector('.LineItemResult.LineItem');
+            var allResults = document.querySelectorAll('.LineItemResult, [class*="LineItem"][class*="Result"]');
+            for (var rj = 0; rj < allResults.length; rj++) {
+              if ((allResults[rj].innerText || '').trim().toLowerCase() === 'place holder') { target = allResults[rj]; break; }
+            }
             if (target) break;
             await _delay(100);
           }
           if (!target) { document.body.click(); await _delay(200); break; }
 
+          // Click the row to open the edit popup
           target.dispatchEvent(new MouseEvent('mousedown', { bubbles: true }));
           target.dispatchEvent(new MouseEvent('mouseup',   { bubbles: true }));
           target.click();
-          await _delay(1000);
+          await _delay(1200);
 
-          // Pick the BTIconActions button closest to viewport center
-          var vcY = window.innerHeight / 2;
-          var actBtn = null;
-          var actionIcons = Array.from(document.querySelectorAll('[data-icon-name="BTIconActions"]'));
-          var closestDist = Infinity;
-          for (var ai = 0; ai < actionIcons.length; ai++) {
-            var rect = actionIcons[ai].getBoundingClientRect();
-            var dist = Math.abs((rect.top + rect.height / 2) - vcY);
-            if (dist < closestDist) { closestDist = dist; actBtn = actionIcons[ai].closest('button, [role="button"]') || actionIcons[ai].parentElement; }
+          // Click the ... button inside the edit popup
+          var moreBtn = null;
+          for (var mb = 0; mb < 20; mb++) {
+            moreBtn = document.querySelector('[data-testid="estimateLineItemDetailsActionsRollup"]');
+            if (moreBtn) break;
+            await _delay(150);
           }
-          if (!actBtn) { _log.push('⚠ Actions button not found on loop ' + (loop + 1) + ' — stopping'); break; }
-
-          actBtn.click();
-          await _delay(400);
-
-          var delOption = Array.from(document.querySelectorAll('.ant-dropdown-menu-title-content')).find(function(el) { return el.textContent.trim() === 'Delete'; });
-          if (!delOption) { document.body.click(); _log.push('⚠ Delete option not found on loop ' + (loop + 1) + ' — stopping'); break; }
-          delOption.click();
+          if (!moreBtn) { _log.push('⚠ More button not found on loop ' + (loop + 1) + ' — stopping'); break; }
+          moreBtn.click();
           await _delay(500);
 
-          var confirmBtn = Array.from(document.querySelectorAll('button span')).find(function(el) { return el.textContent.trim() === 'Delete'; });
+          // Click Delete in the rollup menu
+          var delBtn = null;
+          for (var db = 0; db < 15; db++) {
+            delBtn = document.querySelector('#estimateLineItemDetailsActions-menu [data-testid="delete"]');
+            if (delBtn) break;
+            await _delay(100);
+          }
+          if (!delBtn) { document.body.click(); _log.push('⚠ Delete option not found on loop ' + (loop + 1) + ' — stopping'); break; }
+          delBtn.click();
+          await _delay(600);
+
+          // Click confirm Delete button
+          var confirmBtn = null;
+          for (var cb2 = 0; cb2 < 15; cb2++) {
+            confirmBtn = document.querySelector('[data-testid="confirmPrompt"]');
+            if (confirmBtn) break;
+            await _delay(100);
+          }
           if (!confirmBtn) { _log.push('⚠ Confirm Delete not found on loop ' + (loop + 1) + ' — stopping'); break; }
-          confirmBtn.closest('button').click();
+          confirmBtn.click();
           await _delay(3000);
           deletedCount++;
         }
@@ -1024,9 +1214,15 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
     var groupFlags = (flagsRes && flagsRes[0] && flagsRes[0].result) || { hasCsa: false, hasLender: false };
     log('Group flags — CSA: ' + groupFlags.hasCsa + ', Lender: ' + groupFlags.hasLender);
 
-    // Step 1: Click buildProposal
+    // Step 1: Click buildProposal, then wait for the proposal page to fire its draft request
     log('Opening proposal builder…');
     setStatus('Opening proposal…');
+    // Snapshot resource count before clicking so we can find NEW entries after
+    var preClickCount = await chrome.scripting.executeScript({
+      target: { tabId: tab.id }, world: 'MAIN',
+      func: function () { return performance.getEntriesByType('resource').length; }
+    });
+    var preCount = (preClickCount && preClickCount[0] && preClickCount[0].result) || 0;
     await chrome.scripting.executeScript({
       target: { tabId: tab.id }, world: 'MAIN',
       func: function () {
@@ -1034,14 +1230,58 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
         if (btn) btn.click();
       }
     });
-    await delay(2500);
+    // Wait up to 6s for the proposal draft request to appear in performance entries
+    var proposalJobId = null;
+    for (var pw = 0; pw < 40; pw++) {
+      await delay(150);
+      var jobIdRes = await chrome.scripting.executeScript({
+        target: { tabId: tab.id }, world: 'MAIN',
+        func: function (startIdx) {
+          var resources = performance.getEntriesByType('resource');
+          // Scan only entries added AFTER the click (backwards for most recent first)
+          for (var ri = resources.length - 1; ri >= startIdx; ri--) {
+            var m = resources[ri].name.match(/\/apix\/v2\/Proposals\/draft\?jobId=(\d+)/);
+            if (m) return m[1];
+          }
+          return null;
+        },
+        args: [preCount]
+      });
+      proposalJobId = jobIdRes && jobIdRes[0] && jobIdRes[0].result;
+      if (proposalJobId) break;
+    }
+    log('Proposal jobId: ' + (proposalJobId || 'not found — will fall back to save button'));
+    await delay(1000);
 
     // Step 1.5: Fill editors if grand total available
     if (grandTotal > 0) {
       log('Filling proposal editors…');
       setStatus('Writing proposal text…');
+
+      // Read sales notes from SALES NOTES sheet tab
+      var salesNotesText = '';
+      try {
+        var snResp = await sendMsg('READ_CELLS_RANGE_TAB', { tab: 'SALES NOTES', range: 'A1' });
+        salesNotesText = ((snResp.data && snResp.data[0] && snResp.data[0][0]) || '').trim();
+      } catch(e) { log('⚠ Could not read sales notes: ' + e.message); }
+
       var lowFmt  = '$' + Math.round(grandTotal * 0.99).toLocaleString('en-US');
       var highFmt = '$' + Math.round(grandTotal * 1.10).toLocaleString('en-US');
+
+      // Build notes block if notes exist — same header style as WHAT'S INCLUDED
+      var notesBlock = '';
+      if (salesNotesText) {
+        var noteLines = salesNotesText.split('\n').map(function(l) { return l.trim(); }).filter(Boolean);
+        var notesBody = noteLines.map(function(l) {
+          return l.startsWith('-') ? '<li>' + l.slice(1).trim() + '</li>' : '<p>' + l + '</p>';
+        }).join('');
+        var hasListItems = noteLines.some(function(l) { return l.startsWith('-'); });
+        if (hasListItems) notesBody = '<ul>' + notesBody + '</ul>';
+        notesBlock = '<p>&nbsp;</p>' +
+          '<h2><span style="font-size:16px;"><strong>NOTES</strong></span></h2><hr />' +
+          notesBody;
+      }
+
       var introHtml = [
         '<p><em>This is a preliminary estimate for budgeting purposes only &mdash; not a contract or binding price.</em></p>',
         '&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;',
@@ -1050,18 +1290,19 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
         '<h3><span style="font-size:16px;"><strong>ESTIMATED BUDGET RANGE</strong></span></h3>',
         '<h1><span style="font-size:28px;"><strong>' + lowFmt + ' &ndash; ' + highFmt + '</strong></span></h1>',
         '</td></tr></tbody></table>',
+        notesBlock,
         '&nbsp;',
         '<p>&nbsp;</p>',
         '<h2><span style="font-size:16px;"><strong>WHAT&#39;S INCLUDED IN YOUR ESTIMATE&nbsp;</strong></span></h2>',
-        '<hr /><strong>Design &amp; Pre-Construction</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Complete architectural plans, engineering, permits, surveys, and inspections',
-        '<hr /><strong>Foundation</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp;Standard footings, walls, waterproofing, and backfill',
-        '<hr /><strong>Framing &amp; Structure</strong>&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Full framing package including lumber, trusses, engineered joists, and stairs',
-        '<hr /><strong>Exterior Envelope</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Siding exterior with architectural shingle roofing, gutters, and all exterior trim',
-        '<hr /><strong>Mechanical Systems</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp;Complete HVAC, plumbing rough &amp; finish, and electrical rough &amp; finish',
-        '<hr /><strong>Insulation &amp; Drywall</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp; Full insulation to code, drywall, and interior/exterior paint',
-        '<hr /><strong>Interior Finishes</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; Interior doors, trim, hardware, and custom carpentry allowance',
-        '<hr /><strong>Site Work</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Site clearing, grading, driveway, and all utilities including municipal tap fees',
-        '<hr /><strong>Decks / Porches</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Porches and decks finished per spec'
+        '<p><hr /><strong>Design &amp; Pre-Construction</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Complete architectural plans, engineering, permits, surveys, and inspections</p>',
+        '<p><hr /><strong>Foundation</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp;Standard footings, walls, waterproofing, and backfill</p>',
+        '<p><hr /><strong>Framing &amp; Structure</strong>&nbsp; &nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;Full framing package including lumber, trusses, engineered joists, and stairs</p>',
+        '<p><hr /><strong>Exterior Envelope</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Siding exterior with architectural shingle roofing, gutters, and all exterior trim</p>',
+        '<p><hr /><strong>Mechanical Systems</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp;Complete HVAC, plumbing rough &amp; finish, and electrical rough &amp; finish</p>',
+        '<p><hr /><strong>Insulation &amp; Drywall</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; &nbsp; Full insulation to code, drywall, and interior/exterior paint</p>',
+        '<p><hr /><strong>Interior Finishes</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; &nbsp; Interior doors, trim, hardware, and custom carpentry allowance</p>',
+        '<p><hr /><strong>Site Work</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Site clearing, grading, driveway, and all utilities including municipal tap fees</p>',
+        '<p><hr /><strong>Decks / Porches</strong>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp; Porches and decks finished per spec</p>'
       ].join('');
       var closingHtml = [
         '<h2><span style="font-size:16px;"><span style="color:#000000;"><strong>BUDGET PRICING SUMMARY</strong></span></span></h2>',
@@ -1120,10 +1361,11 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
         '<p style="text-align: center;"><em>Keel Custom Homes &bull; Preliminary Budget Estimate &bull; Confidential</em></p>'
       ].join('');
 
-      await chrome.scripting.executeScript({
+      var fillResult = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: async function (introHtml, closingHtml) {
+        func: async function (introHtml, closingHtml, knownJobId) {
           function delay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+          var _status = { ckEditors: 0, jobId: null, putStatus: null, branch: null };
 
           var titleInput = document.querySelector('#title[data-testid="title"]');
           if (titleInput) {
@@ -1139,21 +1381,26 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
             await delay(300);
             waited += 300;
           }
-          if (!window.CKEDITOR) return;
+          if (!window.CKEDITOR) { _status.branch = 'no-ckeditor'; return _status; }
           var editorKeys = Object.keys(CKEDITOR.instances);
-          if (editorKeys.length < 2) return;
+          _status.ckEditors = editorKeys.length;
+          if (editorKeys.length < 2) { _status.branch = 'too-few-editors'; return _status; }
           var editorA = CKEDITOR.instances[editorKeys[0]];
           var editorB = CKEDITOR.instances[editorKeys[1]];
           editorA.setData(introHtml);
           editorB.setData(closingHtml);
           await delay(300);
 
-          var jobId = null;
-          var resources = performance.getEntriesByType('resource');
-          for (var ri = 0; ri < resources.length; ri++) {
-            var rm = resources[ri].name.match(/\/apix\/v2\/Proposals\/draft\?jobId=(\d+)/);
-            if (rm) { jobId = rm[1]; break; }
+          // Use the jobId captured right after buildProposal click (most recent, correct proposal)
+          var jobId = knownJobId || null;
+          if (!jobId) {
+            var resources = performance.getEntriesByType('resource');
+            for (var ri = resources.length - 1; ri >= 0; ri--) {
+              var rm = resources[ri].name.match(/\/apix\/v2\/Proposals\/draft\?jobId=(\d+)/);
+              if (rm) { jobId = rm[1]; break; }
+            }
           }
+          _status.jobId = jobId;
 
           if (jobId) {
             var draft = await new Promise(function (resolve) {
@@ -1169,9 +1416,11 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
               xhr.send();
             });
             if (!draft) {
+              _status.branch = 'no-draft-savebtn';
               var saveBtn = document.querySelector('[data-testid="save"]');
               if (saveBtn) { saveBtn.click(); await delay(3000); }
             } else {
+              _status.branch = 'full-put';
               var putBody = {};
               Object.keys(draft).forEach(function (k) {
                 if (draft[k] && typeof draft[k] === 'object' && !Array.isArray(draft[k])) {
@@ -1204,7 +1453,7 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
               putBody.introductionText = introHtml;
               putBody.closingText = closingHtml;
               var bodyStr = JSON.stringify(putBody);
-              await new Promise(function (resolve) {
+              var putStatus = await new Promise(function (resolve) {
                 var xhr = new XMLHttpRequest();
                 xhr.open('PUT', '/apix/v2/Proposals/draft?jobId=' + jobId, true);
                 xhr.setRequestHeader('content-type', 'application/merge-patch+json');
@@ -1214,20 +1463,24 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
                 xhr.onerror = function () { resolve(0); };
                 xhr.send(bodyStr);
               });
+              _status.putStatus = putStatus;
               await delay(1500);
               editorA.setData(introHtml);
               editorB.setData(closingHtml);
               await delay(300);
             }
           } else {
+            _status.branch = 'no-jobid-savebtn';
             var saveBtn2 = document.querySelector('[data-testid="save"]');
             if (saveBtn2) { saveBtn2.click(); await delay(3000); }
           }
+          return _status;
         },
-        args: [introHtml, closingHtml]
+        args: [introHtml, closingHtml, proposalJobId]
       });
 
-      log('Proposal editors filled.');
+      var fillStatus = fillResult && fillResult[0] && fillResult[0].result;
+      log('Proposal editors filled. [ck:' + (fillStatus && fillStatus.ckEditors) + ' jobId:' + (fillStatus && fillStatus.jobId) + ' branch:' + (fillStatus && fillStatus.branch) + ' put:' + (fillStatus && fillStatus.putStatus) + ']');
       await delay(2000);
 
       // Uncheck signatures
@@ -1257,26 +1510,89 @@ async function selectTabForClientPreview(tab, titleEl, statusEl, logEl) {
       // CKEditor normalizes HTML on save and can re-bold things — do a final
       // merge-patch after the save to lock in our exact intro/closing text.
       log('Locking proposal text…');
-      await chrome.scripting.executeScript({
+      var lockResult = await chrome.scripting.executeScript({
         target: { tabId: tab.id }, world: 'MAIN',
-        func: async function (iHtml, cHtml) {
-          var jobId = null;
-          var resources = performance.getEntriesByType('resource');
-          for (var ri = 0; ri < resources.length; ri++) {
-            var rm = resources[ri].name.match(/\/apix\/v2\/Proposals\/draft\?jobId=(\d+)/);
-            if (rm) { jobId = rm[1]; break; }
+        func: async function (iHtml, cHtml, knownJobId) {
+          var jobId = knownJobId || null;
+          if (!jobId) {
+            var resources = performance.getEntriesByType('resource');
+            for (var ri = resources.length - 1; ri >= 0; ri--) {
+              var rm = resources[ri].name.match(/\/apix\/v2\/Proposals\/draft\?jobId=(\d+)/);
+              if (rm) { jobId = rm[1]; break; }
+            }
           }
-          if (!jobId) return;
-          var xhr = new XMLHttpRequest();
-          xhr.open('PUT', '/apix/v2/Proposals/draft?jobId=' + jobId, true);
-          xhr.setRequestHeader('content-type', 'application/merge-patch+json');
-          xhr.setRequestHeader('accept', 'application/json, text/plain, */*');
-          xhr.setRequestHeader('portaltype', '1');
-          xhr.send(JSON.stringify({ introductionText: iHtml, closingText: cHtml }));
+          if (!jobId) return { lockStatus: null, verifyIntroLen: null };
+          // Full GET → PUT (same as main save) so BT's API accepts it
+          var draft = await new Promise(function (resolve) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('GET', '/apix/v2/Proposals/draft?jobId=' + jobId, true);
+            xhr.setRequestHeader('accept', 'application/json, text/plain, */*');
+            xhr.setRequestHeader('portaltype', '1');
+            xhr.onload = function () { try { resolve(JSON.parse(xhr.responseText)); } catch(e) { resolve(null); } };
+            xhr.onerror = function () { resolve(null); };
+            xhr.send();
+          });
+          if (!draft) return { lockStatus: null, verifyIntroLen: null };
+          var putBody = {};
+          Object.keys(draft).forEach(function (k) {
+            if (draft[k] && typeof draft[k] === 'object' && !Array.isArray(draft[k])) { Object.assign(putBody, draft[k]); }
+          });
+          if (!('categories' in putBody) && putBody.formatItems) { putBody.categories = putBody.formatItems; }
+          if (!('formatOptions' in putBody)) {
+            var dOpts = putBody.displayOptions || {};
+            var pConf = putBody.proposalDisplayConfig || {};
+            putBody.formatOptions = {
+              body: dOpts.body, header: dOpts.header, printoutType: dOpts.printoutType,
+              includeSpecs: dOpts.includeSpecs || false, showAddress: putBody.showAddress || false,
+              showOwnerContactInfo: putBody.showOwnerContactInfo || false,
+              showPrintoutInfo: putBody.showPrintoutInfo || false,
+              proposalLayout: pConf.proposalLayout != null ? pConf.proposalLayout : 0,
+              hasSingleSelectCostTypes: pConf.hasSingleSelectCostTypes || false
+            };
+          }
+          if (Array.isArray(putBody.categories)) {
+            putBody.categories.forEach(function (cat) {
+              if (cat.items && !cat.lineItems) { cat.lineItems = cat.items; delete cat.items; }
+            });
+          }
+          putBody.requireSignatures = false;
+          putBody.requiredSignatureUsers = [];
+          if (putBody.columnsToDisplay && Array.isArray(putBody.columnsToDisplay.value)) {
+            putBody.columnsToDisplay = putBody.columnsToDisplay.value;
+          }
+          putBody.introductionText = iHtml;
+          putBody.closingText = cHtml;
+          var lockStatus = await new Promise(function (resolve) {
+            var xhr = new XMLHttpRequest();
+            xhr.open('PUT', '/apix/v2/Proposals/draft?jobId=' + jobId, true);
+            xhr.setRequestHeader('content-type', 'application/merge-patch+json');
+            xhr.setRequestHeader('accept', 'application/json, text/plain, */*');
+            xhr.setRequestHeader('portaltype', '1');
+            xhr.onload = function () { resolve(xhr.status); };
+            xhr.onerror = function () { resolve(0); };
+            xhr.send(JSON.stringify(putBody));
+          });
+          // Verify
+          var vxhr = new XMLHttpRequest();
+          vxhr.open('GET', '/apix/v2/Proposals/draft?jobId=' + jobId, false);
+          vxhr.setRequestHeader('accept', 'application/json, text/plain, */*');
+          vxhr.setRequestHeader('portaltype', '1');
+          vxhr.send();
+          var verifyIntroLen = null;
+          if (vxhr.status === 200) {
+            try {
+              var vdata = JSON.parse(vxhr.responseText);
+              var intro = vdata.introductionText || (vdata.proposal && vdata.proposal.introductionText) || '';
+              verifyIntroLen = intro.length;
+            } catch(e) {}
+          }
+          return { lockStatus: lockStatus, verifyIntroLen: verifyIntroLen };
         },
-        args: [introHtml, closingHtml]
+        args: [introHtml, closingHtml, proposalJobId]
       });
-      await delay(1500);
+      var lr = lockResult && lockResult[0] && lockResult[0].result;
+      log('Lock result: status=' + (lr && lr.lockStatus) + ' verifyIntroLen=' + (lr && lr.verifyIntroLen));
+      await delay(500);
     }
 
     // Step 2: Click Client Preview tab

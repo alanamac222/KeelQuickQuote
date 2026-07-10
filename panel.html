@@ -1,0 +1,513 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>KeelEZEstimate Sync</title>
+  <link rel="stylesheet" href="popup.css">
+  <style>
+    /* ── Panel-specific overrides: full window, scrollable, resizable ── */
+    html, body {
+      width: 100%; height: 100%;
+      overflow: hidden;
+      /* Chrome popup windows are already OS-resizable — no extra CSS needed */
+    }
+    body {
+      display: flex; flex-direction: column;
+      max-height: 100vh;
+    }
+    /* Remove the fixed width constraint from popup.css */
+    body { width: auto !important; min-height: auto !important; max-height: 100vh !important; }
+
+    /* Drag hint in header */
+    .header {
+      cursor: move;
+      user-select: none;
+      -webkit-app-region: drag;
+    }
+    .header button, .header a {
+      -webkit-app-region: no-drag;
+      cursor: pointer;
+    }
+
+    /* Zoom & Pin controls */
+    .panel-controls {
+      display: flex; align-items: center; gap: 4px;
+      -webkit-app-region: no-drag;
+    }
+    .ctrl-btn {
+      width: 28px; height: 28px; border-radius: 5px; border: none;
+      background: rgba(255,255,255,0.12); color: white;
+      font-size: 14px; font-weight: 700; cursor: pointer;
+      display: flex; align-items: center; justify-content: center;
+      transition: background 0.15s;
+      -webkit-app-region: no-drag;
+    }
+    .ctrl-btn:hover { background: rgba(255,255,255,0.22); }
+    .ctrl-btn.active { background: #e8b84b; color: #1a1a2e; }
+    .zoom-label {
+      font-size: 10px; color: #94a3b8; min-width: 30px;
+      text-align: center; -webkit-app-region: no-drag;
+    }
+
+    /* Smooth zoom transition on whole document */
+    body { transition: zoom 0.15s; }
+
+    /* Scrollable body content */
+    .panel-body {
+      flex: 1;
+      overflow-y: auto;
+      overflow-x: hidden;
+    }
+
+    /* Sheet preview table — grow to fill available space */
+    .sheet-content {
+      max-height: none !important;
+    }
+    #sheet-table { font-size: 12px; }
+
+    /* Specs page picker */
+    .tk-specs-picker {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 14px; margin: 8px 0;
+    }
+    .tk-specs-list { display: flex; flex-direction: column; gap: 6px; max-height: 200px; overflow-y: auto; }
+    .tk-specs-list label {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 12px; color: #334155; cursor: pointer;
+      padding: 5px 8px; border-radius: 6px; border: 1px solid #e2e8f0; background: #fff;
+    }
+    .tk-specs-list label:hover { background: #f1f5f9; }
+    .tk-specs-list input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; flex-shrink: 0; }
+
+    /* Flooring notes collapsible */
+    .tk-flooring-notes {
+      background: #f0f9ff; border: 1px solid #bae6fd; border-radius: 8px;
+      margin: 6px 0; font-size: 11px; color: #0c4a6e;
+    }
+    .tk-flooring-notes summary {
+      padding: 7px 10px; cursor: pointer; font-weight: 600; list-style: none; user-select: none;
+    }
+    .tk-flooring-notes summary::-webkit-details-marker { display: none; }
+    .tk-flooring-notes[open] summary { border-bottom: 1px solid #bae6fd; }
+    #tk-flooring-notes-body { padding: 8px 10px; }
+    .fn-section { margin-bottom: 6px; }
+    .fn-section-title { font-weight: 700; text-transform: uppercase; font-size: 10px; color: #0369a1; margin-bottom: 2px; }
+    .fn-note { margin-left: 8px; margin-bottom: 2px; }
+
+    /* Area config dialog */
+    .tk-area-config {
+      background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;
+      padding: 14px; margin: 8px 0; display: flex; flex-direction: column; gap: 10px;
+    }
+    .ac-title { font-weight: 700; font-size: 13px; color: #1a1a2e; }
+    .ac-row { display: flex; flex-direction: column; gap: 4px; }
+    .ac-label { font-size: 11px; color: #64748b; font-weight: 600; text-transform: uppercase; letter-spacing: .04em; }
+    .ac-radio-group, .ac-check-group { display: flex; flex-wrap: wrap; gap: 8px; }
+    .ac-radio-group label, .ac-check-group label {
+      display: flex; align-items: center; gap: 4px;
+      font-size: 12px; color: #334155; cursor: pointer;
+    }
+
+    /* Write to Estimate panel */
+    .estimate-panel {
+      border: 1px solid #e2e8f0; border-radius: 10px;
+      margin: 10px 12px; padding: 12px 14px;
+      background: #f8fafc;
+    }
+    .estimate-header { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+    .estimate-icon { font-size: 20px; }
+    .estimate-title { font-weight: 700; font-size: 13px; color: #1a1a2e; }
+    .estimate-sub { font-size: 11px; color: #64748b; }
+    .estimate-controls { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+    .lender-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: #475569; }
+    .lender-toggle input[type="checkbox"] { width: 14px; height: 14px; cursor: pointer; }
+    .estimate-btn { flex-shrink: 0; }
+    .estimate-log {
+      margin-top: 10px; font-size: 11px; color: #475569;
+      max-height: 120px; overflow-y: auto;
+      background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;
+      padding: 6px 8px; white-space: pre-wrap;
+    }
+
+    /* Proposal group selector */
+    .proposal-select { margin-top: 10px; background: #fff; border: 1px solid #3b82f6; border-radius: 8px; padding: 10px 12px; }
+    .proposal-select-title { font-weight: 700; font-size: 12px; color: #1e40af; margin-bottom: 2px; }
+    .proposal-select-sub { font-size: 11px; color: #64748b; margin-bottom: 8px; }
+    .proposal-select-list { display: flex; flex-direction: column; gap: 4px; margin-bottom: 10px; }
+    .proposal-select-row { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #1a1a2e; cursor: pointer; padding: 4px 6px; border-radius: 5px; }
+    .proposal-select-row:hover { background: #f1f5f9; }
+    .proposal-select-row input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer; flex-shrink: 0; }
+    .proposal-select-name { flex: 1; }
+    .proposal-select-amount { font-size: 11px; color: #64748b; margin-left: auto; }
+    #btn-proposal-done { width: 100%; }
+
+    /* Collapsible sheet preview */
+    details.sheet-section { border-top: 1px solid #e2e8f0; }
+    details.sheet-section > summary {
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 10px 14px; cursor: pointer; list-style: none; user-select: none;
+    }
+    details.sheet-section > summary::-webkit-details-marker { display: none; }
+    .sheet-summary-right {
+      display: flex; align-items: center; gap: 8px;
+      -webkit-app-region: no-drag;
+    }
+    .sheet-link-btn {
+      font-size: 11px; padding: 3px 8px;
+      -webkit-app-region: no-drag;
+    }
+
+    /* Collapsible Write to Estimate section */
+    details.estimate-section {
+      border: 1px solid #e2e8f0; border-radius: 10px;
+      margin: 10px 12px;
+      background: #f8fafc;
+    }
+    details.estimate-section > summary {
+      display: flex; align-items: center; gap: 10px;
+      padding: 12px 14px; cursor: pointer;
+      list-style: none; user-select: none;
+      -webkit-app-region: no-drag;
+    }
+    details.estimate-section > summary::-webkit-details-marker { display: none; }
+    .estimate-summary-chevron {
+      margin-left: auto; font-size: 11px; color: #94a3b8;
+      transition: transform 0.15s;
+    }
+    details.estimate-section[open] .estimate-summary-chevron { transform: rotate(180deg); }
+    details.estimate-section > .estimate-panel {
+      border: none; border-top: 1px solid #e2e8f0;
+      border-radius: 0 0 10px 10px;
+      margin: 0; background: transparent;
+    }
+
+  </style>
+</head>
+<body>
+  <!-- ── HEADER (drag handle) ── -->
+  <div class="header">
+    <div class="header-left">
+      <span class="logo" style="font-size:11px;letter-spacing:-0.5px;">EZ</span>
+      <div>
+        <div class="title">KeelEZEstimate</div>
+        <div class="subtitle" id="header-sub">Drag to move  •  Corner to resize</div>
+      </div>
+    </div>
+
+    <!-- Zoom + Pin controls -->
+    <div class="panel-controls">
+      <button class="ctrl-btn" id="btn-zoom-out" title="Zoom out">−</button>
+      <span class="zoom-label" id="zoom-label">100%</span>
+      <button class="ctrl-btn" id="btn-zoom-in"  title="Zoom in">+</button>
+      <button class="ctrl-btn" id="btn-pin" title="Pin: keep on top">📌</button>
+      <button id="btn-settings" class="icon-btn" title="Settings">⚙</button>
+    </div>
+  </div>
+
+  <!-- Status bar -->
+  <div id="status-bar" class="status-bar hidden"></div>
+
+  <!-- Scrollable content area -->
+  <div class="panel-body">
+
+    <!-- ── GUIDED TAKEOFF PANEL ── -->
+    <div class="takeoff-panel">
+      <div class="takeoff-header">
+        <span class="takeoff-icon">📐</span>
+        <div>
+          <div class="takeoff-title">Guided Takeoff</div>
+          <div class="takeoff-sub">Auto-setup, counts, areas &amp; linear in SquareTakeoff</div>
+        </div>
+      </div>
+
+      <!-- Idle state -->
+      <div id="tk-idle" class="tk-idle">
+        <button id="btn-start-takeoff" class="btn-primary tk-start-btn">▶ Start Takeoff</button>
+        <p class="tk-idle-hint">Opens SquareTakeoff, cleans up sheets, sets scale, then guides you through all counts, areas &amp; linear.</p>
+      </div>
+
+      <!-- Active state: step guidance -->
+      <div id="tk-active" class="tk-active hidden">
+        <div class="tk-step-bar">
+          <span class="tk-step-info" id="tk-step-info">Step 1</span>
+          <div class="tk-progress-wrap"><div class="tk-progress" id="tk-progress"></div></div>
+        </div>
+        <div class="tk-card">
+          <div class="tk-card-icon" id="tk-card-icon">⏳</div>
+          <div class="tk-card-title" id="tk-card-title">Starting…</div>
+          <div class="tk-card-msg" id="tk-card-msg"></div>
+        </div>
+        <div class="tk-buttons">
+          <button id="btn-tk-yes" class="btn-primary hidden">Yes ↵</button>
+          <button id="btn-tk-no" class="btn-ghost hidden">No</button>
+          <button id="btn-tk-done" class="btn-primary hidden">Done ✓</button>
+          <button id="btn-tk-skip" class="btn-ghost hidden">Skip →</button>
+          <button id="btn-tk-skip-all-counts" class="btn-ghost hidden">Skip All Counts ⏭</button>
+          <button id="btn-tk-cancel" class="btn-ghost tk-cancel-btn">✕ Cancel</button>
+        </div>
+        <div id="tk-log" class="tk-log"></div>
+      </div>
+
+      <!-- Specs page picker (shown before area config) -->
+      <div id="tk-specs-picker" class="tk-specs-picker hidden">
+        <div class="ac-title">Are any of these docs specs?</div>
+        <button id="btn-specs-none" class="btn-ghost" style="margin-bottom:8px;width:100%">No Specs — Skip →</button>
+        <div id="tk-specs-list" class="tk-specs-list"></div>
+        <button id="btn-specs-confirm" class="btn-primary" style="margin-top:8px;width:100%">Analyze Selected Specs →</button>
+      </div>
+
+      <!-- Flooring notes (shown above area config, hidden after submit) -->
+      <details id="tk-flooring-notes" class="tk-flooring-notes hidden">
+        <summary>📋 Flooring Notes (from Included Features)</summary>
+        <div id="tk-flooring-notes-body"></div>
+      </details>
+
+      <!-- Area config dialog (shown before area takeoffs) -->
+      <div id="tk-area-config" class="tk-area-config hidden">
+        <div class="ac-title">Area Takeoff Setup</div>
+        <div class="ac-row" id="ac-floors-row">
+          <span class="ac-label">Floors</span>
+          <div class="ac-radio-group">
+            <label><input type="radio" name="ac-floors" value="1" checked> 1</label>
+            <label><input type="radio" name="ac-floors" value="2"> 2</label>
+            <label><input type="radio" name="ac-floors" value="3"> 3</label>
+          </div>
+        </div>
+        <div class="ac-row">
+          <span class="ac-label">Optional areas</span>
+          <div class="ac-check-group">
+            <label><input type="checkbox" id="ac-rear-porch"> Rear Porch</label>
+            <label><input type="checkbox" id="ac-rear-deck"> Rear Deck</label>
+            <label><input type="checkbox" id="ac-basement"> Basement</label>
+            <label><input type="checkbox" id="ac-attic-storage"> Attic w/ Storage</label>
+            <label><input type="checkbox" id="ac-habitable-attic"> Habitable Attic</label>
+          </div>
+        </div>
+        <div id="tk-no-specs-msg" style="font-size:11px;color:#64748b;background:#f1f5f9;border-radius:6px;padding:5px 8px;margin-bottom:6px;display:none">⚠ No Specs page found — select flooring manually</div>
+        <div class="ac-row" id="ac-flooring-section">
+          <span class="ac-label">Flooring</span>
+          <div id="ac-flooring-floors"></div>
+        </div>
+        <button id="btn-ac-confirm" class="btn-primary">Start Area Takeoffs →</button>
+      </div>
+
+      <!-- Complete state -->
+      <div id="tk-complete" class="tk-complete hidden">
+        <div class="tk-complete-icon">✅</div>
+        <div class="tk-complete-msg">Takeoff complete!</div>
+        <button id="btn-tk-write" class="btn-primary">Grab &amp; Write to Sheet</button>
+      </div>
+
+      <!-- Post-write-to-sheet container (injected dynamically via JS) -->
+      <div id="tk-estimate-step-container"></div>
+
+      <!-- Back / Forward navigation for the final 3 steps -->
+      <div id="tk-seq-nav" style="display:none; justify-content:space-between; align-items:center; margin:4px 0 8px;">
+        <button id="btn-seq-back" class="btn-ghost" style="padding:6px 16px;">← Back</button>
+        <button id="btn-seq-forward" class="btn-ghost" style="padding:6px 16px;">Forward →</button>
+      </div>
+    </div>
+
+    <!-- ── WRITE TO ESTIMATE PANEL (collapsible) ── -->
+    <details class="estimate-section" id="estimate-section">
+      <summary>
+        <span class="estimate-icon">📋</span>
+        <div>
+          <div class="estimate-title">Write to Estimate</div>
+          <div class="estimate-sub">Reads Google Sheet · fills quantities in BuilderTrend estimate</div>
+        </div>
+        <span class="estimate-summary-chevron">▼</span>
+      </summary>
+      <div class="estimate-panel">
+        <!-- Site Options dropdowns -->
+        <div id="ext-site-options" style="display:grid;grid-template-columns:1fr 1fr;gap:6px 10px;padding:8px 0 10px;">
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:#64748b;font-weight:600;">Sewer</label>
+            <select id="ext-so-sewer" style="font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#1e293b;">
+              <option value="">— None —</option>
+              <option value="City (No Septic)">City (No Septic)</option>
+              <option value="Conventional Septic">Conventional Septic</option>
+              <option value="Engineered Septic">Engineered Septic</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:#64748b;font-weight:600;">Water</label>
+            <select id="ext-so-water" style="font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#1e293b;">
+              <option value="">— City Water —</option>
+              <option value="Well">Well</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:#64748b;font-weight:600;">Municipal Tap Fees</label>
+            <select id="ext-so-tap" style="font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#1e293b;">
+              <option value="">— None —</option>
+              <option value="None (Well/Septic)">None (Well/Septic)</option>
+              <option value="Standard (12K)">Standard (12K)</option>
+              <option value="High (18K)">High (18K)</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:#64748b;font-weight:600;">Lot Clearing</label>
+            <select id="ext-so-clearing" style="font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#1e293b;">
+              <option value="">— None —</option>
+              <option value="Light">Light</option>
+              <option value="Moderate">Moderate</option>
+              <option value="Heavy">Heavy</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:#64748b;font-weight:600;">Driveway</label>
+            <select id="ext-so-driveway" style="font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#1e293b;">
+              <option value="">— None —</option>
+              <option value="Short Gravel">Short Gravel</option>
+              <option value="Standard (Gravel)">Standard (Gravel)</option>
+              <option value="Long Gravel">Long Gravel</option>
+              <option value="Asphalt">Asphalt</option>
+            </select>
+          </div>
+          <div style="display:flex;flex-direction:column;gap:2px;">
+            <label style="font-size:10px;color:#64748b;font-weight:600;">Landscaping</label>
+            <select id="ext-so-landscaping" style="font-size:11px;padding:3px 5px;border:1px solid #cbd5e1;border-radius:5px;background:#fff;color:#1e293b;">
+              <option value="">— None —</option>
+              <option value="Basic">Basic</option>
+              <option value="Standard">Standard</option>
+              <option value="Extensive">Extensive</option>
+            </select>
+          </div>
+        </div>
+        <!-- Calculator -->
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;background:#fff;margin-bottom:8px;">
+          <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:2px;letter-spacing:.03em;">CALCULATOR</div>
+          <div style="font-size:10px;color:#94a3b8;margin-bottom:5px;">Formulas auto-save to history when you click out of the box</div>
+          <div style="display:flex;gap:6px;align-items:center;">
+            <input id="ext-calc-input" type="text" placeholder="e.g. 12 * 8.5 + 200"
+              style="flex:1;font-size:12px;padding:5px 8px;border:1px solid #cbd5e1;border-radius:6px;outline:none;font-family:monospace;">
+          </div>
+          <div id="ext-calc-result" style="font-size:13px;font-weight:700;color:#0f172a;margin-top:5px;min-height:18px;"></div>
+          <div style="position:relative;">
+            <button id="ext-calc-history-btn" style="font-size:11px;color:#64748b;background:none;border:none;cursor:pointer;padding:2px 0;margin-top:2px;">▾ History</button>
+            <div id="ext-calc-history-drop" style="display:none;position:absolute;left:0;top:100%;z-index:999;background:#fff;border:1px solid #e2e8f0;border-radius:7px;box-shadow:0 4px 12px rgba(0,0,0,.1);min-width:220px;max-height:180px;overflow-y:auto;padding:4px 0;"></div>
+          </div>
+        </div>
+
+        <!-- Custom Selection Allowances -->
+        <div style="border:1px solid #e2e8f0;border-radius:8px;padding:8px 10px;background:#fff;margin-bottom:8px;">
+          <div style="font-size:11px;font-weight:600;color:#64748b;margin-bottom:5px;letter-spacing:.03em;">CUSTOM SELECTION ALLOWANCES <span style="font-weight:400;color:#94a3b8;">(optional)</span></div>
+          <div id="ext-custom-rows">
+            <div class="ext-custom-row" style="display:flex;gap:5px;margin-bottom:4px;">
+              <input class="ext-custom-name" type="text" placeholder="Item name…" style="flex:2;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;outline:none;">
+              <span style="line-height:28px;color:#64748b;font-size:12px;">$</span>
+              <input class="ext-custom-price" type="number" placeholder="0.00" min="0" step="0.01" style="flex:1;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;outline:none;">
+            </div>
+            <div class="ext-custom-row" style="display:flex;gap:5px;margin-bottom:4px;">
+              <input class="ext-custom-name" type="text" placeholder="Item name…" style="flex:2;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;outline:none;">
+              <span style="line-height:28px;color:#64748b;font-size:12px;">$</span>
+              <input class="ext-custom-price" type="number" placeholder="0.00" min="0" step="0.01" style="flex:1;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;outline:none;">
+            </div>
+            <div class="ext-custom-row" style="display:flex;gap:5px;margin-bottom:4px;">
+              <input class="ext-custom-name" type="text" placeholder="Item name…" style="flex:2;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;outline:none;">
+              <span style="line-height:28px;color:#64748b;font-size:12px;">$</span>
+              <input class="ext-custom-price" type="number" placeholder="0.00" min="0" step="0.01" style="flex:1;font-size:12px;padding:4px 7px;border:1px solid #cbd5e1;border-radius:6px;outline:none;">
+            </div>
+          </div>
+          <button id="ext-add-custom-row" style="font-size:11px;color:#0ea5e9;background:none;border:none;cursor:pointer;padding:2px 0;margin-top:2px;">+ Add row</button>
+        </div>
+
+        <div class="estimate-controls">
+          <label class="lender-toggle" title="Set Preferred Lender Incentive quantity to 1 in the estimate">
+            <input type="checkbox" id="chk-lender">
+            <span class="lender-label">Preferred Lender Incentive</span>
+          </label>
+          <button id="btn-write-estimate" class="btn-primary estimate-btn">Write to Estimate</button>
+          <button id="btn-client-preview" class="btn-secondary estimate-btn">Start Prelim - Budget Client Preview</button>
+          <button id="btn-m1-client-preview" class="btn-secondary estimate-btn">Start M1 Client Preview</button>
+          <button id="btn-stop-write" class="btn-secondary estimate-btn" style="display:none;background:#ef4444;color:#fff;border:none;cursor:pointer;">⏹ Stop</button>
+        </div>
+        <div id="estimate-log" class="estimate-log hidden"></div>
+        <div id="proposal-select" class="proposal-select hidden">
+          <div class="proposal-select-title">Select groups to keep in estimate</div>
+          <div class="proposal-select-sub">All groups are checked by default — uncheck any to delete them from the estimate</div>
+          <div id="proposal-select-list" class="proposal-select-list"></div>
+          <button id="btn-proposal-done" class="btn-primary">Done — Apply Changes</button>
+        </div>
+      </div>
+    </details>
+
+    <!-- ── MANUAL ENTRY ── -->
+    <details class="manual-panel">
+      <summary class="panel-label">Manual Entry ▾</summary>
+      <div class="manual-grid">
+        <div class="manual-section-title">Building Areas (SF)</div>
+        <div class="manual-row"><label>Basement</label><input type="number" data-key="basement" placeholder="0"></div>
+        <div class="manual-row"><label>1st Floor</label><input type="number" data-key="1st floor" placeholder="0"></div>
+        <div class="manual-row"><label>2nd Floor</label><input type="number" data-key="2nd floor" placeholder="0"></div>
+        <div class="manual-row"><label>3rd Floor</label><input type="number" data-key="3rd floor" placeholder="0"></div>
+        <div class="manual-row"><label>Attic w/ Storage</label><input type="number" data-key="attic with storage" placeholder="0"></div>
+        <div class="manual-row"><label>Habitable Attic</label><input type="number" data-key="habitable attic" placeholder="0"></div>
+        <div class="manual-row"><label>Front Porch</label><input type="number" data-key="front porch" placeholder="0"></div>
+        <div class="manual-row"><label>Rear Porch</label><input type="number" data-key="rear porch" placeholder="0"></div>
+        <div class="manual-row"><label>Rear Deck</label><input type="number" data-key="rear deck" placeholder="0"></div>
+        <div class="manual-row"><label>Garage</label><input type="number" data-key="garage" placeholder="0"></div>
+        <div class="manual-row"><label>Cabinets (LF)</label><input type="number" data-key="cabinets lf" placeholder="0"></div>
+        <div class="manual-row"><label>Countertops (LF)</label><input type="number" data-key="countertops lf" placeholder="0"></div>
+        <div class="manual-section-title">Counts &amp; Areas</div>
+        <div class="manual-row"><label># Exterior Doors</label><input type="number" data-key="# of exterior doors" placeholder="0"></div>
+        <div class="manual-row"><label># Windows</label><input type="number" data-key="# of windows" placeholder="0"></div>
+        <div class="manual-row"><label># Baths</label><input type="number" data-key="# of baths" placeholder="0"></div>
+        <div class="manual-row"><label># Staircases</label><input type="number" data-key="# of staircases" placeholder="0"></div>
+        <div class="manual-row"><label># Porch Columns</label><input type="number" data-key="# of front porch columns" placeholder="0"></div>
+        <div class="manual-row"><label># Garage Doors</label><input type="number" data-key="# of garage doors" placeholder="0"></div>
+        <div class="manual-row"><label># Interior Doors</label><input type="number" data-key="# of interior doors" placeholder="0"></div>
+        <div class="manual-row"><label>SF Carpet</label><input type="number" data-key="sf of carpet" placeholder="0"></div>
+        <div class="manual-row"><label>SF Hardwood</label><input type="number" data-key="sf of hardwood" placeholder="0"></div>
+        <div class="manual-row"><label>SF Tile</label><input type="number" data-key="sf of tile" placeholder="0"></div>
+      </div>
+      <div class="manual-actions">
+        <button id="btn-write-manual" class="btn-primary">Write to Sheet</button>
+        <button id="btn-clear-manual" class="btn-ghost">Clear</button>
+      </div>
+    </details>
+
+    <!-- ── SHEET PREVIEW ── -->
+    <details class="sheet-section" id="sheet-details">
+      <summary class="sheet-summary">
+        <span class="sheet-section-label">Sheet Preview ▾</span>
+        <div class="sheet-summary-right">
+          <button id="btn-open-sheet" class="btn-ghost sheet-link-btn" title="Open Google Sheet in new tab">↗ Open Sheet</button>
+          <div class="sheet-zoom-controls">
+            <button class="sz-btn" id="btn-sz-out" title="Zoom out table">−</button>
+            <span class="sz-pct" id="sz-pct">100%</span>
+            <button class="sz-btn" id="btn-sz-in"  title="Zoom in table">+</button>
+          </div>
+        </div>
+      </summary>
+      <div class="tab-nav">
+        <button class="tab-arrow" id="tab-prev" title="Previous section">‹</button>
+        <div class="tab-bar">
+          <button class="tab-btn active" data-tab="fixed-costs">Fixed Costs</button>
+          <button class="tab-btn" data-tab="finished-unfinished">Fin. &amp; Unfin.</button>
+          <button class="tab-btn" data-tab="areas">Areas</button>
+          <button class="tab-btn" data-tab="allowances-permits">Allowances</button>
+        </div>
+        <button class="tab-arrow" id="tab-next" title="Next section">›</button>
+      </div>
+      <div id="sheet-loading" class="sheet-loading hidden">Loading…</div>
+      <div id="sheet-error" class="sheet-error hidden"></div>
+      <div id="sheet-content" class="sheet-content hidden">
+        <table id="sheet-table">
+          <thead id="sheet-thead"></thead>
+          <tbody id="sheet-tbody"></tbody>
+        </table>
+      </div>
+      <button id="btn-refresh-sheet" class="btn-ghost refresh-btn">↻ Refresh Sheet</button>
+    </details>
+
+  </div><!-- end .panel-body -->
+
+  <script src="popup.js"></script>
+  <script src="takeoff-workflow.js"></script>
+  <script src="panel-controls.js"></script>
+  <script src="lib/tesseract.min.js"></script>
+  <script src="panel-ocr.js"></script>
+</body>
+</html>

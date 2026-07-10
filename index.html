@@ -1487,6 +1487,10 @@ btnGo.addEventListener('click', async () => {
     });
     if (soUpdates.length) await sheetsWriteTab('SITE OPTIONS', soUpdates);
 
+    // Write sales notes to SALES NOTES tab
+    const notesVal = (document.getElementById('sales-notes') || {}).value || '';
+    await sheetsWriteTab('SALES NOTES', [{ range: 'A1', value: notesVal.trim() }]);
+
     showStatus('✓ Written ' + updates.length + ' value(s) to sheet.', 'success');
     prereqWrap.classList.add('show');
   } catch(e) {
