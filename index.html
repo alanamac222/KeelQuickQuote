@@ -1654,7 +1654,7 @@ btnConfirm.addEventListener('click', async () => {
       const el = document.getElementById(id);
       const val = el ? el.value : '';
       const map = SITE_DROPDOWN_MAP[id];
-      if (val && map && map[val]) selectedSiteItems.push({ name: map[val].title || val, row: map[val].row, parentGroup: map[val].parentGroup });
+      if (val && map && map[val]) selectedSiteItems.push({ name: map[val].title || val, row: map[val].row, parentGroup: map[val].parentGroup, existingLine: map[val].existingLine || null });
     });
 
     // Read column C (unit pricing) from SITE OPTIONS for all selected rows
