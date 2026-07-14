@@ -1026,6 +1026,10 @@
 
     <!-- ── Write to Estimate button (shown after Go succeeds) ── -->
     <div id="prereq-wrap" class="prereq-wrap">
+      <label class="lender-label">
+        <input type="checkbox" id="chk-slow-connection">
+        Slow Connection
+      </label>
       <div class="est-row">
         <button id="btn-write-estimate" class="btn-estimate">Write to Estimate</button>
         <button id="btn-client-preview-kkq" class="btn-estimate" style="background:var(--navy);color:#fff;">Start Prelim - Budget Client Preview</button>
@@ -1199,11 +1203,11 @@ window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
 // Sends items to the extension and waits briefly for confirmation that
 // its tab-picker window opened. Resolves false if the extension isn't
 // installed or doesn't respond in time, so callers can fall back.
-function tryExtensionHandoff(items, customItems, siteOptions) {
+function tryExtensionHandoff(items, customItems, siteOptions, slowConnection) {
   return new Promise((resolve) => {
     if (!dukeExtensionReady) { resolve(false); return; }
 
-    const timeout = setTimeout(() => { cleanup(); resolve(false); }, 3000);
+    const timeout = setTimeout(() => { cleanup(); resolve(false); }, slowConnection ? 6000 : 3000);
     function onMessage(event) {
       if (event.source !== window) return;
       const data = event.data;
@@ -1217,7 +1221,7 @@ function tryExtensionHandoff(items, customItems, siteOptions) {
       window.removeEventListener('message', onMessage);
     }
     window.addEventListener('message', onMessage);
-    window.postMessage({ source: 'keel-quick-quote', type: 'OPEN_ESTIMATE_TAB_PICKER', items, customItems: customItems || [], siteOptions: siteOptions || [] }, '*');
+    window.postMessage({ source: 'keel-quick-quote', type: 'OPEN_ESTIMATE_TAB_PICKER', items, customItems: customItems || [], siteOptions: siteOptions || [], slowConnection: !!slowConnection }, '*');
   });
 }
 
@@ -1526,18 +1530,19 @@ if (btnClientPreviewKkq) {
   btnClientPreviewKkq.addEventListener('click', async () => {
     btnClientPreviewKkq.disabled = true;
     btnClientPreviewKkq.textContent = 'Opening…';
+    const slowConnection = $('chk-slow-connection').checked;
     try {
       // Re-ping the extension in case it hadn't announced itself yet
       if (!dukeExtensionReady) {
         window.postMessage({ source: 'keel-quick-quote', type: 'PING_EXTENSION' }, '*');
-        await new Promise(r => setTimeout(r, 600));
+        await new Promise(r => setTimeout(r, slowConnection ? 1200 : 600));
       }
       if (!dukeExtensionReady) {
         showStatus('Duke Estimating extension not detected. Make sure it is installed and enabled.', 'error', 6000);
         return;
       }
       await new Promise((resolve) => {
-        const timeout = setTimeout(() => { cleanup(); resolve(false); }, 5000);
+        const timeout = setTimeout(() => { cleanup(); resolve(false); }, slowConnection ? 10000 : 5000);
         function onMessage(event) {
           if (event.source !== window) return;
           const data = event.data;
@@ -1548,7 +1553,7 @@ if (btnClientPreviewKkq) {
         }
         function cleanup() { clearTimeout(timeout); window.removeEventListener('message', onMessage); }
         window.addEventListener('message', onMessage);
-        window.postMessage({ source: 'keel-quick-quote', type: 'RUN_CLIENT_PREVIEW' }, '*');
+        window.postMessage({ source: 'keel-quick-quote', type: 'RUN_CLIENT_PREVIEW', slowConnection: !!slowConnection }, '*');
       });
     } finally {
       btnClientPreviewKkq.disabled = false;
@@ -1691,8 +1696,9 @@ btnConfirm.addEventListener('click', async () => {
       });
     }
 
+    const slowConnection = $('chk-slow-connection').checked;
     btnEstimate.textContent = 'Opening tab picker…';
-    const handedOff = await tryExtensionHandoff(items, customItems, siteOptions);
+    const handedOff = await tryExtensionHandoff(items, customItems, siteOptions, slowConnection);
 
     if (handedOff) {
       showStatus('✓ Tab picker opened — select your BuilderTrend Estimate tab in the window that just appeared.', 'success');
