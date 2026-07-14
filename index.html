@@ -1613,11 +1613,29 @@ btnConfirm.addEventListener('click', async () => {
 
     // Collect custom allowance rows (name + price both required)
     const customItems = [];
+    let customRowError = null;
     document.querySelectorAll('#custom-rows .custom-row').forEach(row => {
-      const name  = row.querySelector('.custom-input-name').value.trim();
-      const price = parseFloat(row.querySelector('.custom-input-price').value) || 0;
-      if (name && price > 0) customItems.push({ name, unitCost: price });
+      if (customRowError) return;
+      const name     = row.querySelector('.custom-input-name').value.trim();
+      const priceRaw = row.querySelector('.custom-input-price').value.trim();
+      const price    = parseFloat(priceRaw) || 0;
+
+      if (!name && !priceRaw) return; // both blank — normal empty/unused row
+      if (name && (!priceRaw || price <= 0)) {
+        customRowError = `Custom Selection Allowance "${name}" is missing a price.`;
+        return;
+      }
+      if (!name && priceRaw) {
+        customRowError = 'A Custom Selection Allowance row has a price but no name.';
+        return;
+      }
+      customItems.push({ name, unitCost: price });
     });
+
+    if (customRowError) {
+      showStatus(customRowError, 'error');
+      return;
+    }
 
     // Collect site options directly from dropdowns — no sheet D-column read needed.
     // Row numbers match SITE OPTIONS sheet rows for column C pricing lookup.
