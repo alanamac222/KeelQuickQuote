@@ -696,6 +696,24 @@
       background: #fff;
     }
     .custom-input-name::placeholder { color: #bcc5d0; }
+    .custom-input-desc {
+      flex: 1.5;
+      height: 30px;
+      border: 1px solid var(--border-dk);
+      border-radius: 6px;
+      padding: 0 9px;
+      font-size: 13px;
+      color: var(--text);
+      background: #fafbfc;
+      outline: none;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    .custom-input-desc:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(232,184,75,.18);
+      background: #fff;
+    }
+    .custom-input-desc::placeholder { color: #bcc5d0; }
     .custom-price-pre { font-size: 12px; color: var(--muted); flex-shrink: 0; }
     .custom-input-price {
       width: 120px;
@@ -824,6 +842,7 @@
     <div class="hdr-title">EZEstimate</div>
     <div class="hdr-user">
       <span class="hdr-email" id="hdr-email"></span>
+      <a class="btn-signout" href="rates.html" style="text-decoration:none;display:inline-flex;align-items:center;">⚙ Rates</a>
       <button class="btn-signout" id="btn-signout">Sign out</button>
     </div>
   </header>
@@ -917,26 +936,31 @@
       <div id="custom-rows">
         <div class="custom-row">
           <input class="custom-input-name" type="text" placeholder="Item name…">
+          <input class="custom-input-desc" type="text" placeholder="Description…">
           <span class="custom-price-pre">$</span>
           <input class="custom-input-price" type="number" placeholder="0.00" min="0" step="0.01">
         </div>
         <div class="custom-row">
           <input class="custom-input-name" type="text" placeholder="Item name…">
+          <input class="custom-input-desc" type="text" placeholder="Description…">
           <span class="custom-price-pre">$</span>
           <input class="custom-input-price" type="number" placeholder="0.00" min="0" step="0.01">
         </div>
         <div class="custom-row">
           <input class="custom-input-name" type="text" placeholder="Item name…">
+          <input class="custom-input-desc" type="text" placeholder="Description…">
           <span class="custom-price-pre">$</span>
           <input class="custom-input-price" type="number" placeholder="0.00" min="0" step="0.01">
         </div>
         <div class="custom-row">
           <input class="custom-input-name" type="text" placeholder="Item name…">
+          <input class="custom-input-desc" type="text" placeholder="Description…">
           <span class="custom-price-pre">$</span>
           <input class="custom-input-price" type="number" placeholder="0.00" min="0" step="0.01">
         </div>
         <div class="custom-row">
           <input class="custom-input-name" type="text" placeholder="Item name…">
+          <input class="custom-input-desc" type="text" placeholder="Description…">
           <span class="custom-price-pre">$</span>
           <input class="custom-input-price" type="number" placeholder="0.00" min="0" step="0.01">
         </div>
@@ -1427,6 +1451,7 @@ function makeCustomRow() {
   const row = document.createElement('div');
   row.className = 'custom-row';
   row.innerHTML = '<input class="custom-input-name" type="text" placeholder="Item name…">' +
+                  '<input class="custom-input-desc" type="text" placeholder="Description…">' +
                   '<span class="custom-price-pre">$</span>' +
                   '<input class="custom-input-price" type="number" placeholder="0.00" min="0" step="0.01">';
   return row;
@@ -1508,7 +1533,7 @@ btnGo.addEventListener('click', async () => {
 
 btnClear.addEventListener('click', () => {
   document.querySelectorAll('.f-input').forEach(i => i.value = '');
-  document.querySelectorAll('.custom-input-name, .custom-input-price').forEach(i => i.value = '');
+  document.querySelectorAll('.custom-input-name, .custom-input-desc, .custom-input-price').forEach(i => i.value = '');
   planSelect.value = '';
   planStatusEl.textContent = '';
   planStatusEl.classList.add('hidden');
@@ -1622,6 +1647,7 @@ btnConfirm.addEventListener('click', async () => {
     document.querySelectorAll('#custom-rows .custom-row').forEach(row => {
       if (customRowError) return;
       const name     = row.querySelector('.custom-input-name').value.trim();
+      const desc     = (row.querySelector('.custom-input-desc') || {}).value?.trim() || '';
       const priceRaw = row.querySelector('.custom-input-price').value.trim();
       const price    = parseFloat(priceRaw) || 0;
 
@@ -1634,7 +1660,7 @@ btnConfirm.addEventListener('click', async () => {
         customRowError = 'A Custom Selection Allowance row has a price but no name.';
         return;
       }
-      customItems.push({ name, unitCost: price });
+      customItems.push({ name, description: desc, unitCost: price });
     });
 
     if (customRowError) {
