@@ -667,6 +667,43 @@
     .plan-status.ok  { color: #16a34a; }
     .plan-status.err { color: #9f1239; }
 
+    /* ── Calculator ── */
+    .calc-section { margin-bottom: 14px; }
+    .calc-sub { font-size: 11px; color: var(--muted); margin-bottom: 8px; }
+    .calc-row { display: flex; gap: 6px; align-items: center; }
+    #calc-input {
+      flex: 1;
+      height: 32px;
+      border: 1px solid var(--border-dk);
+      border-radius: 6px;
+      padding: 0 9px;
+      font-size: 13px;
+      font-family: monospace;
+      color: var(--text);
+      background: #fafbfc;
+      outline: none;
+      transition: border-color 0.12s, box-shadow 0.12s;
+    }
+    #calc-input:focus {
+      border-color: var(--gold);
+      box-shadow: 0 0 0 3px rgba(232,184,75,.18);
+      background: #fff;
+    }
+    .calc-result { font-size: 14px; font-weight: 700; color: var(--text); margin-top: 6px; min-height: 20px; }
+    .calc-history-wrap { position: relative; }
+    .calc-history-btn { font-size: 11px; color: var(--muted); background: none; border: none; cursor: pointer; padding: 2px 0; margin-top: 2px; }
+    .calc-history-drop {
+      position: absolute; left: 0; top: 100%; z-index: 999;
+      background: #fff; border: 1px solid var(--border); border-radius: 7px;
+      box-shadow: 0 4px 12px rgba(0,0,0,.1); min-width: 220px; max-height: 180px;
+      overflow-y: auto; padding: 4px 0;
+    }
+    .calc-history-item {
+      padding: 5px 12px; cursor: pointer; font-size: 12px;
+      border-bottom: 1px solid #f1f5f9; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+    }
+    .calc-history-item:hover { background: #f0f9ff; }
+
     /* ── Custom Allowances ── */
     .custom-section { margin-bottom: 14px; }
     .custom-row {
@@ -929,6 +966,20 @@
       </div>
 
     </div><!-- /.form-grid -->
+
+    <!-- ── Calculator ── -->
+    <div class="card calc-section">
+      <div class="section-label">Calculator</div>
+      <div class="calc-sub">Formulas auto-save to history when you click out of the box</div>
+      <div class="calc-row">
+        <input id="calc-input" type="text" placeholder="e.g. 12 * 8.5 + 200">
+      </div>
+      <div id="calc-result" class="calc-result"></div>
+      <div class="calc-history-wrap">
+        <button id="calc-history-btn" type="button" class="calc-history-btn">▾ History</button>
+        <div id="calc-history-drop" class="calc-history-drop" style="display:none;"></div>
+      </div>
+    </div>
 
     <!-- ── Custom Selection Allowances ── -->
     <div class="card custom-section">
@@ -2053,6 +2104,169 @@ document.addEventListener('keydown', function(e) {
     inputs[(idx + 1) % inputs.length].focus();
   }
 });
+
+// ── Calculator (same math parser + history behavior as the extension's
+// panel calculator, ported here since a plain webpage has no
+// chrome.storage — uses localStorage instead) ──────────────────────────
+(function() {
+  var CALC_STORAGE_KEY = 'keelCalcHistory';
+  var EIGHT_HOURS_MS = 8 * 60 * 60 * 1000;
+  var calcHistory = [];
+
+  var calcInput  = document.getElementById('calc-input');
+  var calcResult = document.getElementById('calc-result');
+  var histBtn    = document.getElementById('calc-history-btn');
+  var histDrop   = document.getElementById('calc-history-drop');
+  if (!calcInput) return;
+
+  function parseMath(str) {
+    var s = str.replace(/^\s*=\s*/, '').trim();
+    var pos = 0;
+    function ws()  { while (pos < s.length && s[pos] === ' ') pos++; }
+    function parseExpr()   { return parseAddSub(); }
+    function parseAddSub() {
+      var v = parseMulDiv(); ws();
+      while (pos < s.length && (s[pos] === '+' || s[pos] === '-')) {
+        var op = s[pos++]; v = op === '+' ? v + parseMulDiv() : v - parseMulDiv(); ws();
+      }
+      return v;
+    }
+    function parseMulDiv() {
+      var v = parsePow(); ws();
+      while (pos < s.length && (s[pos] === '*' || s[pos] === '/' || s[pos] === '%')) {
+        var op = s[pos++]; var r = parsePow();
+        v = op === '*' ? v * r : op === '/' ? v / r : v % r; ws();
+      }
+      return v;
+    }
+    function parsePow() {
+      var v = parseUnary(); ws();
+      if (pos < s.length && s[pos] === '^') { pos++; v = Math.pow(v, parseUnary()); }
+      return v;
+    }
+    function parseUnary() {
+      ws();
+      if (pos < s.length && s[pos] === '-') { pos++; return -parseAtom(); }
+      if (pos < s.length && s[pos] === '+') { pos++; return parseAtom(); }
+      return parseAtom();
+    }
+    function parseAtom() {
+      ws();
+      if (pos < s.length && s[pos] === '(') {
+        pos++; var v = parseExpr(); ws();
+        if (pos < s.length && s[pos] === ')') pos++;
+        return v;
+      }
+      var fnMatch = s.slice(pos).match(/^([A-Za-z_]\w*)\s*\(/);
+      if (fnMatch) {
+        var fname = fnMatch[1].toUpperCase(); pos += fnMatch[0].length;
+        var args = []; ws();
+        if (pos < s.length && s[pos] !== ')') {
+          args.push(parseExpr()); ws();
+          while (pos < s.length && (s[pos] === ',' || s[pos] === ';')) { pos++; args.push(parseExpr()); ws(); }
+        }
+        if (pos < s.length && s[pos] === ')') pos++;
+        switch (fname) {
+          case 'SQRT': return Math.sqrt(args[0]);
+          case 'ABS':  return Math.abs(args[0]);
+          case 'ROUND': return Math.round((args[0]||0) * Math.pow(10, args[1]||0)) / Math.pow(10, args[1]||0);
+          case 'INT':  return Math.trunc(args[0]);
+          case 'MAX':  return Math.max.apply(null, args);
+          case 'MIN':  return Math.min.apply(null, args);
+          case 'SUM':  return args.reduce(function(a,b){return a+b;}, 0);
+          case 'PI':   return Math.PI;
+          default: throw new Error('Unknown function: ' + fname);
+        }
+      }
+      var numRe = s.slice(pos).match(/^[0-9]*\.?[0-9]+/);
+      if (numRe) { pos += numRe[0].length; return parseFloat(numRe[0]); }
+      throw new Error('Unexpected: ' + (s[pos] || 'end'));
+    }
+    var result = parseExpr(); ws();
+    if (pos < s.length) throw new Error('Unexpected: ' + s[pos]);
+    if (!isFinite(result)) throw new Error('Result is not finite');
+    return result;
+  }
+
+  function tryEval(expr) {
+    if (!expr || !expr.trim()) return null;
+    try { return parseMath(expr); } catch(e) { return null; }
+  }
+
+  function saveHistory() {
+    try { localStorage.setItem(CALC_STORAGE_KEY, JSON.stringify(calcHistory)); } catch(e) {}
+  }
+
+  function loadHistory() {
+    try {
+      var now = Date.now();
+      var stored = JSON.parse(localStorage.getItem(CALC_STORAGE_KEY) || '[]');
+      calcHistory = stored.filter(function(h) { return (now - (h.ts || 0)) < EIGHT_HOURS_MS; });
+    } catch(e) { calcHistory = []; }
+  }
+
+  function commitCalc() {
+    var expr = (calcInput.value || '').trim().replace(/^\s*=\s*/, '');
+    if (!expr) return;
+    var val = tryEval(expr);
+    if (val === null) return;
+    var rounded = Math.round(val * 10000) / 10000;
+    if (calcHistory.length && calcHistory[0].expr === expr && calcHistory[0].val === rounded) return;
+    calcHistory.unshift({ expr: expr, val: rounded, ts: Date.now() });
+    if (calcHistory.length > 10) calcHistory.pop();
+    saveHistory();
+    renderHistory();
+  }
+
+  function updateLiveResult() {
+    var expr = (calcInput.value || '').trim();
+    if (!expr) { calcResult.textContent = ''; return; }
+    var val = tryEval(expr);
+    if (val !== null) {
+      calcResult.textContent = '= ' + (Math.round(val * 10000) / 10000);
+    } else {
+      calcResult.textContent = '';
+    }
+  }
+
+  function renderHistory() {
+    if (!histDrop) return;
+    histDrop.innerHTML = '';
+    if (!calcHistory.length) {
+      histDrop.innerHTML = '<div style="padding:6px 12px;font-size:11px;color:#94a3b8;">No history in the last 8 hours</div>';
+      return;
+    }
+    calcHistory.forEach(function(h) {
+      var item = document.createElement('div');
+      item.className = 'calc-history-item';
+      item.innerHTML = h.expr + ' = <b>' + h.val + '</b>';
+      item.addEventListener('click', function() {
+        calcInput.value = String(h.val);
+        updateLiveResult();
+        histDrop.style.display = 'none';
+      });
+      histDrop.appendChild(item);
+    });
+  }
+
+  loadHistory();
+
+  calcInput.addEventListener('input', updateLiveResult);
+  calcInput.addEventListener('keydown', function(e) {
+    if (e.key === 'Enter') { e.preventDefault(); commitCalc(); }
+  });
+  calcInput.addEventListener('blur', commitCalc);
+
+  if (histBtn) histBtn.addEventListener('click', function() {
+    renderHistory();
+    histDrop.style.display = histDrop.style.display === 'none' ? 'block' : 'none';
+  });
+  document.addEventListener('click', function(e) {
+    if (histDrop && !histDrop.contains(e.target) && e.target !== histBtn) {
+      histDrop.style.display = 'none';
+    }
+  }, { capture: true });
+})();
 </script>
 
 </body>
