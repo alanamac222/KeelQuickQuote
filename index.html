@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>EZEstimate</title>
   <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <style>
     *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
@@ -1189,6 +1190,111 @@ const CLIENT_ID  = '453224496219-qbeam8al28h07q5fcppavmg95p66sjup.apps.googleuse
 const SHEET_ID   = '1iO37IiTagtu4OGEZSHA5C62tPRc5HOKMpq0UcsUI9ig';
 const SHEET_NAME = '2026 CUSTOM PLAN';
 
+// ═══════════════════════════════════════════════════════════
+// Supabase — pricing/formula source of truth for computing the
+// estimate (Step 9). The Sheet is still WRITTEN to (see the "Go"
+// button below, unchanged) as a mirror/fallback, but the numbers
+// handed to BuilderTrend now come from here, not a Sheet read.
+// ═══════════════════════════════════════════════════════════
+const SUPABASE_URL  = 'https://fujddlemswhbdqrhpekt.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1amRkbGVtc3doYmRxcmhwZWt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMTYzODcsImV4cCI6MjA5OTg5MjM4N30.pR2IINeUB6RDAXBG6IDHrLc3diW8TNYYN1jAIEdXFm4';
+const sbClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON) : null;
+
+// Row (in the Sheet's raw-measurement column, rows 3-29) -> job_quantities
+// field name. Must stay identical to ROW_TO_FIELD in
+// KeelEZEstimateExtensionV1/supabase-migration/calc-engine.js — these two
+// copies are kept in sync by hand since the two projects don't share a
+// build step.
+const ROW_TO_FIELD = {
+  3: 'basement_sf', 4: 'floor1_sf', 5: 'floor2_sf', 6: 'floor3_sf',
+  7: 'attic_storage_sf', 8: 'habitable_attic_sf',
+  9: 'front_porch_sf', 10: 'rear_porch_sf', 11: 'rear_deck_sf', 12: 'garage_sf',
+  18: 'exterior_doors', 19: 'windows', 20: 'baths',
+  21: 'cabinets_lf', 22: 'countertop_lf', 23: 'staircases',
+  24: 'porch_columns', 25: 'garage_doors', 26: 'interior_doors',
+  27: 'carpet_sf', 28: 'hardwood_sf', 29: 'tile_sf'
+};
+const TOTAL_AREA_ROWS = [3,4,5,6,7,8,9,10,11,12];
+function totalAreaSum(jq) {
+  return TOTAL_AREA_ROWS.reduce((sum, row) => sum + (Number(jq[ROW_TO_FIELD[row]]) || 0), 0);
+}
+const CELL_REF_RE = /\$?I\$?(\d+)/g;
+function evaluateQuantityFormula(formula, jq) {
+  const f = (formula || '').trim();
+  if (f === '') return 0;
+  if (!f.startsWith('=')) { const n = Number(f); return isFinite(n) ? n : 0; }
+  const body = f.slice(1);
+  let total = 0, m;
+  CELL_REF_RE.lastIndex = 0;
+  while ((m = CELL_REF_RE.exec(body)) !== null) {
+    const rowN = parseInt(m[1], 10);
+    if (rowN === 13) { total += totalAreaSum(jq); continue; }
+    const field = ROW_TO_FIELD[rowN];
+    total += field ? (Number(jq[field]) || 0) : 0;
+  }
+  return total;
+}
+
+// Builds the same job_quantities shape from the on-page inputs (no Sheet
+// read needed — these are the raw values the user typed in, straight from
+// the DOM, same source the "Go" button uses to write into the Sheet).
+function buildJobQuantitiesFromInputs() {
+  const jq = {};
+  document.querySelectorAll('.f-input').forEach(inp => {
+    const cell = CELL_MAP[inp.dataset.key.toLowerCase().trim()];
+    if (!cell) return;
+    const row = parseInt(cell.replace(/\D/g, ''), 10);
+    const field = ROW_TO_FIELD[row];
+    if (field) jq[field] = parseFloat(inp.value) || 0;
+  });
+  return jq;
+}
+
+// Computes the same cell values the old sheetsReadBatch(['I13','D32',...])
+// call used to return, but from Supabase's cost_items.quantity_formula
+// instead of the Sheet's live D-column formulas — same math
+// (evaluateQuantityFormula), same rows, verified against the Sheet in
+// KeelEZEstimateExtensionV1/supabase-migration/verify-calc-engine.js.
+async function computeCellsFromSupabase(neededRows) {
+  const jq = buildJobQuantitiesFromInputs();
+  const codes = neededRows.map(String);
+  const { data, error } = await sbClient.from('cost_items').select('cost_code,quantity_formula').in('cost_code', codes);
+  if (error) throw new Error('Supabase read failed: ' + error.message);
+  const byCode = {};
+  (data || []).forEach(r => { byCode[r.cost_code] = r.quantity_formula; });
+
+  const c = {
+    I13: totalAreaSum(jq),
+    I9: jq.front_porch_sf || 0, I10: jq.rear_porch_sf || 0, I11: jq.rear_deck_sf || 0,
+    I18: jq.exterior_doors || 0, I19: jq.windows || 0, I23: jq.staircases || 0,
+    I24: jq.porch_columns || 0, I26: jq.interior_doors || 0
+  };
+  neededRows.forEach(row => {
+    const formula = byCode[String(row)];
+    if (formula === undefined) throw new Error('cost_items row ' + row + ' not found in Supabase — refusing to guess a quantity.');
+    c['D' + row] = evaluateQuantityFormula(formula, jq);
+  });
+  return c;
+}
+
+// Looks up a Site Option's Cost ($) from Supabase, matching category +
+// option_label case-insensitively (the UI's dropdown labels use slightly
+// different capitalization than the stored option_label, e.g. "City (No
+// Septic)" vs. "City (no septic)").
+function normalizeLabel(s) { return (s || '').toLowerCase().replace(/[^a-z0-9]/g, ''); }
+async function lookupSiteOptionCost(category, optionLabel) {
+  const { data, error } = await sbClient.from('site_options').select('option_label,cost').eq('category', category);
+  if (error) throw new Error('Supabase site_options read failed: ' + error.message);
+  // Normalized match (case + punctuation-insensitive) — the UI's dropdown
+  // labels and Supabase's stored option_label differ slightly in
+  // capitalization/punctuation (e.g. "Standard (12K)" vs "Standard ($12K)"),
+  // confirmed by direct comparison against the dropdown's actual <option> text.
+  const target = normalizeLabel(optionLabel);
+  const match = (data || []).find(r => normalizeLabel(r.option_label) === target);
+  if (!match) throw new Error('Site option "' + category + ' / ' + optionLabel + '" not found in Supabase — refusing to guess a cost.');
+  return match.cost;
+}
+
 // ── Cell Map (matches extension background.js CELL_MAP) ──────────────────────
 const CELL_MAP = {
   'basement':                 'I3',
@@ -1647,15 +1753,12 @@ btnConfirm.addEventListener('click', async () => {
   if (!accessToken) { showStatus('Not signed in.', 'error'); return; }
 
   btnEstimate.disabled = true;
-  btnEstimate.textContent = 'Reading sheet…';
-  showStatus('Reading computed values from sheet…', 'info', true);
+  btnEstimate.textContent = 'Computing…';
+  showStatus('Computing estimate from Supabase…', 'info', true);
 
   try {
-    const c = await sheetsReadBatch([
-      'I13','D32','D46','D50','D56','D59','D62','D68',
-      'I9','I10','I11','I18','I19','I23','I24','I26',
-      'D86','D88','D89','D90','D91','D92','D93','D94','D99'
-    ]);
+    if (!sbClient) throw new Error('Supabase client failed to load — check network/ad-blocker and try again.');
+    const c = await computeCellsFromSupabase([32,46,50,56,59,62,68,86,88,89,90,91,92,93,94,99]);
     const n = v => parseFloat(String(v || '0').replace(/[^0-9.-]/g, '')) || 0;
     const lender = $('chk-lender').checked;
 
@@ -1754,23 +1857,26 @@ btnConfirm.addEventListener('click', async () => {
       },
     };
 
+    // Select id -> Supabase site_options.category (must match seed-data.js's SITE_OPTIONS exactly)
+    const SITE_ID_TO_CATEGORY = {
+      'so-sewer': 'Sewer', 'so-water': 'Water', 'so-tap': 'Tap Fees',
+      'so-clearing': 'Clearing', 'so-driveway': 'Driveway', 'so-landscaping': 'Landscaping'
+    };
+
     const selectedSiteItems = [];
     ['so-sewer','so-water','so-tap','so-clearing','so-driveway','so-landscaping'].forEach(id => {
       const el = document.getElementById(id);
       const val = el ? el.value : '';
       const map = SITE_DROPDOWN_MAP[id];
-      if (val && map && map[val]) selectedSiteItems.push({ name: map[val].title || val, row: map[val].row, parentGroup: map[val].parentGroup, existingLine: map[val].existingLine || null });
+      if (val && map && map[val]) selectedSiteItems.push({ name: map[val].title || val, optionLabel: val, category: SITE_ID_TO_CATEGORY[id], parentGroup: map[val].parentGroup, existingLine: map[val].existingLine || null });
     });
 
-    // Read column C (unit pricing) from SITE OPTIONS for all selected rows
+    // Look up each selected option's Cost ($) from Supabase (case-insensitive
+    // label match — see lookupSiteOptionCost). No Sheet read needed.
     const siteOptions = [];
-    if (selectedSiteItems.length) {
-      const cRows = await sheetsReadRange('SITE OPTIONS', 'C2:C19');
-      selectedSiteItems.forEach(item => {
-        const rowData = cRows && cRows[item.row - 2]; // C2 → index 0, C3 → index 1, …
-        const unitCost = parseFloat(String((rowData && rowData[0]) || '0').replace(/[^0-9.-]/g, '')) || 0;
-        siteOptions.push({ name: item.name, parentGroup: item.parentGroup, unitCost, existingLine: item.existingLine || null });
-      });
+    for (const item of selectedSiteItems) {
+      const unitCost = await lookupSiteOptionCost(item.category, item.optionLabel);
+      siteOptions.push({ name: item.name, parentGroup: item.parentGroup, unitCost, existingLine: item.existingLine || null });
     }
 
     const slowConnection = $('chk-slow-connection').checked;
