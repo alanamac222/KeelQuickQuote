@@ -1566,36 +1566,39 @@ function planMsg(msg, cls) {
   planStatusEl.classList.remove('hidden');
 }
 
+// key ('KIAWAH'/'SANIBEL'/'VERO') -> reference_house_measurements.house.
+// This dropdown used to read the Sheet's Master Plan tabs directly; it now
+// reads from Supabase (see admin/index.html's "Seed Reference Houses"
+// button, which is what populates this table from the Sheet).
+const PLAN_KEY_TO_HOUSE = { KIAWAH: 'kiawah', SANIBEL: 'sanibel', VERO: 'vero' };
+
+// data-key -> job_quantities/ROW_TO_FIELD field name (same mapping as
+// buildJobQuantitiesFromInputs, just inverted for prefilling the form).
+const DATA_KEY_TO_FIELD = {};
+Object.keys(CELL_MAP).forEach(k => {
+  const row = parseInt(CELL_MAP[k].replace(/\D/g, ''), 10);
+  const field = ROW_TO_FIELD[row];
+  if (field) DATA_KEY_TO_FIELD[k] = field;
+});
+
 planSelect.addEventListener('change', async () => {
   const key = planSelect.value;
   if (!key) return;
   if (!accessToken) { planMsg('Sign in first.', 'err'); planSelect.value = ''; return; }
+  if (!sbClient) { planMsg('Supabase client failed to load.', 'err'); planSelect.value = ''; return; }
 
   planMsg('Loading…');
-  const sheetTab = '2026 MASTER PLAN ' + key;
   try {
-    // Read just the I column by known row positions — mirrors CELL_MAP exactly
-    const [areaVals, countVals] = await Promise.all([
-      sheetsReadRange(sheetTab, 'I3:I12'),
-      sheetsReadRange(sheetTab, 'I18:I29'),
-    ]);
-
-    const areaKeys  = ['basement','1st floor','2nd floor','3rd floor','attic with storage','habitable attic','front porch','rear porch','rear deck','garage'];
-    const countKeys = ['# of exterior doors','# of windows','# of baths','cabinets lf','countertops lf','# of staircases','# of front porch columns','# of garage doors','# of interior doors','sf of carpet','sf of hardwood','sf of tile'];
+    const house = PLAN_KEY_TO_HOUSE[key];
+    const { data, error } = await sbClient.from('reference_house_measurements').select('*').eq('house', house).single();
+    if (error || !data) throw new Error('Reference house "' + house + '" not found in Supabase — run "Seed Reference Houses" in the admin tool first.');
 
     document.querySelectorAll('.f-input').forEach(i => i.value = '');
-
-    function applyVals(rows, keys) {
-      rows.forEach((row, i) => {
-        if (i >= keys.length) return;
-        const val = parseFloat(String((row && row[0]) || '0').replace(/[^0-9.-]/g, '')) || 0;
-        const inp = document.querySelector(`.f-input[data-key="${keys[i]}"]`);
-        if (inp && val > 0) inp.value = val;
-      });
-    }
-
-    applyVals(areaVals, areaKeys);
-    applyVals(countVals, countKeys);
+    document.querySelectorAll('.f-input').forEach(inp => {
+      const field = DATA_KEY_TO_FIELD[inp.dataset.key.toLowerCase().trim()];
+      const val = field ? Number(data[field]) || 0 : 0;
+      if (val > 0) inp.value = val;
+    });
     planMsg('✓ ' + key.charAt(0) + key.slice(1).toLowerCase() + ' loaded', 'ok');
     setTimeout(() => { planStatusEl.textContent = ''; planStatusEl.classList.add('hidden'); }, 2500);
   } catch(e) {
