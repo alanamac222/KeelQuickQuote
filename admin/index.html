@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>2026 CUSTOM PLAN — Google Sheets Replica</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="https://accounts.google.com/gsi/client" async defer></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f8f9fa; color: #202124; font-size: 12px; }
+
+    /* Auth Screen */
+    #auth-screen {
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      min-height: 100vh; gap: 16px; background: #fff;
+    }
+    #auth-screen h1 { font-size: 1.5rem; color: #1a73e8; }
+    #auth-email { padding: 10px 14px; border-radius: 4px; border: 1px solid #dadce0; font-size: 14px; width: 280px; }
+    #auth-btn { padding: 10px 24px; background: #1a73e8; color: #fff; border: none; border-radius: 4px; font-size: 14px; cursor: pointer; font-weight: bold; }
+    #auth-msg { font-size: 13px; min-height: 20px; }
+
+    /* Header & Menus */
+    #app { display: none; }
+    header { background: #fff; border-bottom: 1px solid #dadce0; padding: 8px 16px; display: flex; align-items: center; justify-content: space-between; }
+    .sheet-title { display: flex; align-items: center; gap: 10px; }
+    .sheet-icon { background: #0f9d58; color: white; padding: 3px 6px; border-radius: 3px; font-weight: bold; font-size: 11px; }
+    .menu-bar { display: flex; gap: 16px; color: #3c4043; font-size: 13px; margin-top: 4px; padding-left: 28px; }
+
+    /* Formula Bar */
+    .formula-bar { display: flex; align-items: center; background: #fff; border-bottom: 1px solid #e0e0e0; padding: 4px 12px; gap: 8px; font-family: monospace; font-size: 13px; }
+    .cell-name { font-weight: bold; color: #5f6368; min-width: 35px; }
+    .fx { color: #5f6368; font-style: italic; font-weight: bold; }
+    .formula-input { flex: 1; border: 1px solid #dadce0; padding: 4px 8px; border-radius: 2px; }
+
+    /* Sheet Grid */
+    .spreadsheet-container { overflow: auto; height: calc(100vh - 130px); background: #f8f9fa; }
+    table.sheet-table { border-collapse: collapse; background: #fff; table-layout: fixed; width: 100%; }
+    table.sheet-table th { background: #f1f3f4; color: #5f6368; font-weight: normal; border: 1px solid #c0c0c0; text-align: center; font-size: 11px; height: 24px; user-select: none; }
+    table.sheet-table th.row-hdr { width: 40px; }
+    table.sheet-table td { border: 1px solid #e0e0e0; padding: 4px 6px; vertical-align: middle; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: 12px; height: 22px; }
+    
+    /* Sheet Section Banners */
+    tr.sec-hdr td { background: #0f9d58; color: #ffffff; font-weight: bold; text-align: center; font-size: 13px; letter-spacing: 0.5px; }
+    tr.col-hdr td { background: #e8f0fe; color: #1a73e8; font-weight: bold; text-align: center; border-bottom: 2px solid #1a73e8; }
+    
+    .pencil-btn { cursor: pointer; opacity: 0.4; margin-left: 4px; border: none; background: none; font-size: 11px; }
+    .pencil-btn:hover { opacity: 1.0; }
+
+    /* Exact 8 Google Sheets Tabs at Bottom */
+    .sheet-tabs-footer { background: #f1f3f4; border-top: 1px solid #c0c0c0; display: flex; height: 32px; align-items: center; padding-left: 10px; position: fixed; bottom: 0; width: 100%; overflow-x: auto; }
+    .tab-item { padding: 6px 14px; background: #e8eaed; border: 1px solid #c0c0c0; border-bottom: none; cursor: pointer; font-size: 11px; margin-right: 2px; border-top-left-radius: 4px; border-top-right-radius: 4px; white-space: nowrap; color: #5f6368; }
+    .tab-item.active { background: #fff; color: #0f9d58; font-weight: bold; border-top: 2px solid #0f9d58; }
+
+    /* Modal Popup */
+    .modal-overlay { display: none; position: fixed; top: 0; left: 0; width: 100%; height: 100%; background: rgba(0,0,0,0.4); justify-content: center; align-items: center; z-index: 100; }
+    .modal-overlay.active { display: flex; }
+    .modal { background: #fff; padding: 20px; border-radius: 6px; width: 400px; box-shadow: 0 4px 16px rgba(0,0,0,0.2); border: 1px solid #dadce0; }
+    .modal h3 { font-size: 15px; margin-bottom: 12px; color: #202124; }
+    .modal-field { margin-bottom: 12px; }
+    .modal-field label { display: block; font-size: 11px; color: #5f6368; margin-bottom: 4px; }
+    .modal-field input { width: 100%; padding: 8px; font-size: 13px; border: 1px solid #dadce0; border-radius: 4px; }
+    .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 16px; }
+    .modal-btn { padding: 6px 16px; border-radius: 4px; cursor: pointer; border: none; font-size: 12px; }
+    .btn-confirm { background: #0f9d58; color: #fff; font-weight: bold; }
+    .btn-cancel { background: #f1f3f4; color: #3c4043; }
+  </style>
+</head>
+<body>
+
+<!-- Auth Screen -->
+<div id="auth-screen">
+  <h1>Google Sheets Admin Sync</h1>
+  <p>Sign in with your @kchva.com email & password</p>
+  <form onsubmit="event.preventDefault(); signInWithPassword();" style="display:flex;flex-direction:column;align-items:center;gap:10px;">
+    <input id="auth-email" type="email" placeholder="you@kchva.com" required />
+    <input id="auth-password" type="password" placeholder="Password" style="padding: 10px 14px; border-radius: 4px; border: 1px solid #dadce0; font-size: 14px; width: 280px;" required />
+    <button id="auth-btn" type="submit">Sign In</button>
+  </form>
+  <div id="auth-msg"></div>
+</div>
+
+<!-- Main App -->
+<div id="app">
+  <header>
+    <div>
+      <div class="sheet-title">
+        <span class="sheet-icon">田</span>
+        <h2 style="font-size:16px;font-weight:normal;">2026 CUSTOM PLAN ESTIMATING MASTER</h2>
+      </div>
+      <div class="menu-bar">
+        <span>File</span><span>Edit</span><span>View</span><span>Insert</span><span>Format</span><span>Data</span><span>Tools</span>
+      </div>
+    </div>
+    <div>
+      <span id="user-email-label" style="margin-right:12px;color:#5f6368;"></span>
+      <span id="sync-status" style="margin-right:12px;font-size:11px;color:#5f6368;"></span>
+      <button id="sync-btn" onclick="syncChangesToSheets()" style="padding:4px 8px;cursor:pointer;background:#1a73e8;color:#fff;border:none;border-radius:4px;margin-right:8px;">Sync Changes to Sheets</button>
+      <button onclick="signOut()" style="padding:4px 8px;cursor:pointer;">Sign Out</button>
+    </div>
+  </header>
+
+  <div class="formula-bar">
+    <span class="cell-name" id="selected-cell-id">A1</span>
+    <span class="fx">fx</span>
+    <input class="formula-input" id="formula-bar-input" value="Keel EZ Estimate Master Cost Sheet" readonly />
+  </div>
+
+  <div class="spreadsheet-container">
+    <table class="sheet-table">
+      <thead>
+        <tr>
+          <th class="row-hdr"></th>
+          <th style="width:110px;">A (Cost Code)</th>
+          <th style="width:280px;">B (Item Name)</th>
+          <th style="width:250px;">C (Calc Basis)</th>
+          <th style="width:110px;">D (Quantity)</th>
+          <th style="width:140px;">E (Amount)</th>
+          <th style="width:120px;">F (Unit Cost)</th>
+        </tr>
+      </thead>
+      <tbody id="sheet-grid-body">
+        <!-- Rendered rows -->
+      </tbody>
+    </table>
+  </div>
+
+  <!-- Exact 8 Google Sheet Tabs from live document -->
+  <div class="sheet-tabs-footer">
+    <div class="tab-item active" onclick="switchSheetTab('2026 CUSTOM PLAN', this)">2026 CUSTOM PLAN</div>
+    <div class="tab-item" onclick="switchSheetTab('2026 MASTER PLAN KIAWAH', this)">2026 MASTER PLAN KIAWAH</div>
+    <div class="tab-item" onclick="switchSheetTab('2026 MASTER PLAN SANIBEL', this)">2026 MASTER PLAN SANIBEL</div>
+    <div class="tab-item" onclick="switchSheetTab('2026 MASTER PLAN VERO', this)">2026 MASTER PLAN VERO</div>
+    <div class="tab-item" onclick="switchSheetTab('SITE OPTIONS', this)">SITE OPTIONS</div>
+    <div class="tab-item" onclick="switchSheetTab('SALES NOTES', this)">SALES NOTES</div>
+    <div class="tab-item" onclick="switchSheetTab('TEMPLATE', this)">TEMPLATE</div>
+    <div class="tab-item" onclick="switchSheetTab('SALES VERSION', this)">SALES VERSION</div>
+  </div>
+</div>
+
+<!-- Sync Results Modal -->
+<div id="sync-modal" class="modal-overlay">
+  <div class="modal" style="width:560px;max-height:70vh;overflow-y:auto;">
+    <h3 id="sync-modal-title">Sync Changes to Sheets</h3>
+    <div id="sync-modal-body" style="font-size:12px;line-height:1.6;"></div>
+    <div class="modal-actions">
+      <button class="modal-btn btn-cancel" onclick="closeSyncModal()">Close</button>
+      <button id="sync-apply-btn" class="modal-btn btn-confirm" onclick="applySyncChanges()" style="display:none;">Apply These Changes</button>
+    </div>
+  </div>
+</div>
+
+<!-- Edit Cell Modal -->
+<div id="edit-modal" class="modal-overlay">
+  <div class="modal">
+    <h3 id="modal-title">Edit Cell Value</h3>
+    <div class="modal-field">
+      <label>Item Name</label>
+      <input id="modal-item-name" type="text" readonly style="background:#f1f3f4;" />
+    </div>
+    <div class="modal-field">
+      <label>Field Being Edited</label>
+      <input id="modal-col-name" type="text" readonly style="background:#f1f3f4;" />
+    </div>
+    <div class="modal-field">
+      <label>Actual Formula from Sheet</label>
+      <input id="modal-formula-val" type="text" readonly style="background:#f1f3f4;font-family:monospace;" />
+    </div>
+    <div class="modal-field">
+      <label>Value / Formula Definition</label>
+      <input id="modal-input-val" type="text" />
+    </div>
+    <div class="modal-actions">
+      <button class="modal-btn btn-cancel" onclick="closeModal()">Cancel</button>
+      <button class="modal-btn btn-confirm" onclick="confirmEdit()">Confirm Edit</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const SUPABASE_URL  = 'https://fujddlemswhbdqrhpekt.supabase.co';
+const SUPABASE_ANON = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImZ1amRkbGVtc3doYmRxcmhwZWt0Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODQzMTYzODcsImV4cCI6MjA5OTg5MjM4N30.pR2IINeUB6RDAXBG6IDHrLc3diW8TNYYN1jAIEdXFm4';
+const ALLOWED_EMAILS = ['alana@kchva.com', 'jduke@kchva.com'];
+
+const { createClient } = supabase;
+const sb = createClient(SUPABASE_URL, SUPABASE_ANON);
+
+let activeTab = '2026 CUSTOM PLAN';
+let activeEditTarget = null;
+
+async function signInWithPassword() {
+  const email = document.getElementById('auth-email').value.trim().toLowerCase();
+  const password = document.getElementById('auth-password').value;
+  const msg = document.getElementById('auth-msg');
+  if (!email || !password) {
+    msg.style.color = '#d93025'; msg.textContent = 'Please enter both email and password.'; return;
+  }
+  if (!ALLOWED_EMAILS.includes(email)) {
+    msg.style.color = '#d93025'; msg.textContent = 'Unauthorized account email.'; return;
+  }
+  msg.style.color = '#5f6368'; msg.textContent = 'Signing in…';
+  const { data, error } = await sb.auth.signInWithPassword({ email, password });
+  if (error) {
+    // If user exists in rate_admins but not yet created in Auth, attempt automatic creation
+    if (error.message.includes('Invalid login credentials')) {
+      const { data: signUpData, error: signUpErr } = await sb.auth.signUp({ email, password });
+      if (signUpErr) {
+        msg.style.color = '#d93025'; msg.textContent = error.message;
+      } else {
+        msg.style.color = '#0f9d58'; msg.textContent = 'Account created & signed in!';
+      }
+    } else {
+      msg.style.color = '#d93025'; msg.textContent = error.message;
+    }
+  }
+}
+
+async function signOut() {
+  await sb.auth.signOut();
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('auth-screen').style.display = 'flex';
+}
+
+sb.auth.onAuthStateChange((event, session) => {
+  if (session?.user) {
+    document.getElementById('auth-screen').style.display = 'none';
+    document.getElementById('app').style.display = 'block';
+    document.getElementById('user-email-label').textContent = session.user.email;
+    loadSheetData();
+  }
+});
+
+function switchSheetTab(tabName, el) {
+  activeTab = tabName;
+  document.querySelectorAll('.tab-item').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  loadSheetData();
+}
+
+function openEditModal(table, id, col, itemName, fieldLabel, formulaStr, currentVal) {
+  activeEditTarget = { table, id, col };
+  document.getElementById('modal-item-name').value = itemName;
+  document.getElementById('modal-col-name').value = fieldLabel;
+  document.getElementById('modal-formula-val').value = formulaStr;
+  document.getElementById('modal-input-val').value = currentVal;
+  document.getElementById('edit-modal').classList.add('active');
+}
+
+function closeModal() {
+  document.getElementById('edit-modal').classList.remove('active');
+  activeEditTarget = null;
+}
+
+async function confirmEdit() {
+  if (!activeEditTarget) return;
+  const newVal = document.getElementById('modal-input-val').value.trim();
+  const { table, id, col } = activeEditTarget;
+
+  if (table === 'custom_plan') {
+    const inputNum = parseFloat(newVal) || 0;
+    // Query house_rates for this cost item across kiawah, sanibel, vero
+    const { data: rates, error: fetchErr } = await sb.from('house_rates').select('*').eq('cost_item_id', id);
+    if (fetchErr || !rates) { closeModal(); alert('Error reading rates: ' + (fetchErr?.message || 'Not found')); return; }
+
+    for (let hr of rates) {
+      let newAmt = inputNum;
+      if (col === 'unit_cost') {
+        const qty = hr.quantity > 0 ? hr.quantity : 1;
+        newAmt = inputNum * qty;
+      }
+      await sb.from('house_rates').update({ amount: newAmt }).eq('id', hr.id);
+    }
+    closeModal();
+    loadSheetData();
+    return;
+  }
+
+  let payload = {};
+  if (col === 'unit_cost') {
+    const targetQty = parseFloat(document.getElementById('modal-formula-val').dataset.qty || 1);
+    payload['amount'] = (parseFloat(newVal) || 0) * targetQty;
+  } else {
+    payload[col] = (col === 'amount' || col === 'quantity' || col === 'cost') ? parseFloat(newVal) || 0 : newVal;
+  }
+
+  const { error } = await sb.from(table).update(payload).eq('id', id);
+  closeModal();
+  if (error) { alert('Error updating: ' + error.message); }
+  else { loadSheetData(); }
+}
+
+function selectCell(cellRef, formulaOrVal) {
+  document.getElementById('selected-cell-id').textContent = cellRef;
+  document.getElementById('formula-bar-input').value = formulaOrVal;
+}
+
+async function loadSheetData() {
+  const tbody = document.getElementById('sheet-grid-body');
+  tbody.innerHTML = '';
+
+  if (activeTab === 'SITE OPTIONS') {
+    const { data } = await sb.from('site_options').select('*').order('sort_order');
+    if (!data) return;
+    let rowIdx = 1;
+    let trHdr = document.createElement('tr');
+    trHdr.className = 'col-hdr';
+    trHdr.innerHTML = `<td class="row-hdr">${rowIdx++}</td><td colspan="6">SITE OPTIONS UPGRADES</td>`;
+    tbody.appendChild(trHdr);
+
+    let trCols = document.createElement('tr');
+    trCols.style.background = '#f1f3f4'; trCols.style.fontWeight = 'bold';
+    trCols.innerHTML = `<td class="row-hdr">${rowIdx++}</td><td>Category</td><td colspan="2">Option Label</td><td colspan="2">Cost ($)</td><td>Notes</td>`;
+    tbody.appendChild(trCols);
+
+    data.forEach(so => {
+      let tr = document.createElement('tr');
+      let currRow = rowIdx++;
+      tr.innerHTML = `
+        <td class="row-hdr" style="text-align:center;">${currRow}</td>
+        <td>${so.category}</td>
+        <td colspan="2"><strong>${so.option_label}</strong></td>
+        <td colspan="2">$${so.cost} <button class="pencil-btn" onclick="openEditModal('site_options', ${so.id}, 'cost', '${so.option_label}', 'Cost ($)', '=COST', '${so.cost}')">✏️</button></td>
+        <td>${so.notes || ''} <button class="pencil-btn" onclick="openEditModal('site_options', ${so.id}, 'notes', '${so.option_label}', 'Notes', '', '${so.notes || ''}')">✏️</button></td>
+      `;
+      tbody.appendChild(tr);
+    });
+    return;
+  }
+
+  if (activeTab === 'SALES NOTES' || activeTab === 'TEMPLATE' || activeTab === 'SALES VERSION') {
+    let rowIdx = 1;
+    let trHdr = document.createElement('tr');
+    trHdr.className = 'col-hdr';
+    trHdr.innerHTML = `<td class="row-hdr">${rowIdx++}</td><td colspan="6">${activeTab} SHEET READ-ONLY VIEW</td>`;
+    tbody.appendChild(trHdr);
+    let trMsg = document.createElement('tr');
+    trMsg.innerHTML = `<td class="row-hdr">${rowIdx++}</td><td colspan="6" style="padding:20px;text-align:center;color:#5f6368;">This sheet (${activeTab}) is linked directly to live estimate calculations.</td>`;
+    tbody.appendChild(trMsg);
+    return;
+  }
+
+  // Determine house model tab mapping
+  let currentHouse = 'kiawah';
+  if (activeTab.includes('SANIBEL')) currentHouse = 'sanibel';
+  if (activeTab.includes('VERO')) currentHouse = 'vero';
+
+  const { data } = await sb.from('cost_items').select('*, house_rates(*)').order('sort_order');
+  if (!data) return;
+
+  let currentSection = '';
+  let rowIdx = 1;
+
+  let colHdrTr = document.createElement('tr');
+  colHdrTr.className = 'col-hdr';
+  colHdrTr.innerHTML = `<td class="row-hdr">${rowIdx++}</td><td colspan="6">${activeTab.toUpperCase()} (${currentHouse.toUpperCase()})</td>`;
+  tbody.appendChild(colHdrTr);
+
+  let headerColsTr = document.createElement('tr');
+  headerColsTr.style.background = '#f1f3f4'; headerColsTr.style.fontWeight = 'bold';
+  headerColsTr.innerHTML = `
+    <td class="row-hdr">${rowIdx++}</td>
+    <td>Cost Code</td>
+    <td>Item</td>
+    <td>Type / Calc Basis</td>
+    <td>Quantity</td>
+    <td>Amount</td>
+    <td>Unit Cost</td>
+  `;
+  tbody.appendChild(headerColsTr);
+
+  data.forEach(r => {
+    if (r.section !== currentSection) {
+      currentSection = r.section;
+      let secTr = document.createElement('tr');
+      secTr.className = 'sec-hdr';
+      secTr.innerHTML = `<td class="row-hdr" style="background:#f1f3f4;color:#5f6368;font-weight:normal;">${rowIdx++}</td><td colspan="6">${currentSection.toUpperCase()}</td>`;
+      tbody.appendChild(secTr);
+    }
+
+    let houseRate = null;
+    let qtyVal = 0;
+    let amtVal = 0;
+    let unitCost = 0;
+    let unitFormulaStr = '';
+
+    if (activeTab === '2026 CUSTOM PLAN') {
+      // 2026 CUSTOM PLAN is computed by taking the average unit rate of the 3 reference house models (Kiawah, Sanibel, Vero)
+      const hrK = (r.house_rates || []).find(h => h.house === 'kiawah');
+      const hrS = (r.house_rates || []).find(h => h.house === 'sanibel');
+      const hrV = (r.house_rates || []).find(h => h.house === 'vero');
+
+      const uK = (hrK && hrK.quantity > 0) ? (hrK.amount / hrK.quantity) : (hrK?.amount || 0);
+      const uS = (hrS && hrS.quantity > 0) ? (hrS.amount / hrS.quantity) : (hrS?.amount || 0);
+      const uV = (hrV && hrV.quantity > 0) ? (hrV.amount / hrV.quantity) : (hrV?.amount || 0);
+
+      unitCost = (uK + uS + uV) / 3;
+      qtyVal = r.is_fixed ? 1 : 0;
+      amtVal = unitCost * (r.is_fixed ? 1 : qtyVal);
+      unitFormulaStr = '=AVERAGE(\'2026 MASTER PLAN KIAWAH\'!F' + rowIdx + ', \'2026 MASTER PLAN SANIBEL\'!F' + rowIdx + ', \'2026 MASTER PLAN VERO\'!F' + rowIdx + ')';
+    } else {
+      houseRate = (r.house_rates || []).find(h => h.house === currentHouse);
+      qtyVal    = houseRate ? houseRate.quantity : 0;
+      amtVal    = houseRate ? houseRate.amount : 0;
+      unitCost  = (qtyVal > 0) ? (amtVal / qtyVal) : 0;
+      unitFormulaStr = '=E' + rowIdx + '/D' + rowIdx;
+    }
+
+    const formattedAmt      = '$' + amtVal.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    const formattedUnitCost = '$' + unitCost.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+
+    const qtyFormulaStr  = r.is_fixed ? '1' : ('=' + (r.quantity_formula || 'fixed'));
+    const amtFormulaStr  = (activeTab === '2026 CUSTOM PLAN') ? ('=D' + rowIdx + '*F' + rowIdx) : amtVal.toFixed(2);
+
+    const currRow = rowIdx++;
+
+    const safeName  = (r.item_name || '').replace(/'/g, "\\'");
+    const safeBasis = (r.calc_basis || '').replace(/'/g, "\\'");
+    const safeQtyF  = (r.quantity_formula || '').replace(/'/g, "\\'");
+
+    let tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="row-hdr" style="text-align:center;background:#f1f3f4;color:#5f6368;">${currRow}</td>
+      <td onclick="selectCell('A${currRow}', '${r.cost_code || ''}')">${r.cost_code || ''}</td>
+      <td onclick="selectCell('B${currRow}', '${safeName}')"><strong>${r.item_name || ''}</strong></td>
+      <td onclick="selectCell('C${currRow}', '${safeBasis}')">
+        ${r.calc_basis || ''} 
+        <button class="pencil-btn" title="Edit Calc Basis" onclick="openEditModal('cost_items', ${r.id}, 'calc_basis', '${safeName}', 'Calc Basis', '${safeBasis}', '${safeBasis}')">✏️</button>
+      </td>
+      <td onclick="selectCell('D${currRow}', '${qtyFormulaStr.replace(/'/g, "\\'")}')">
+        ${qtyVal} 
+        <button class="pencil-btn" title="Edit Quantity Formula" onclick="openEditModal('cost_items', ${r.id}, 'quantity_formula', '${safeName}', 'Quantity Formula', '${qtyFormulaStr.replace(/'/g, "\\'")}', '${safeQtyF}')">✏️</button>
+      </td>
+      <td onclick="selectCell('E${currRow}', '${amtFormulaStr.replace(/'/g, "\\'")}')">
+        ${formattedAmt} 
+        ${activeTab === '2026 CUSTOM PLAN' 
+          ? `<button class="pencil-btn" title="Edit Amount" onclick="openEditModal('custom_plan', ${r.id}, 'amount', '${safeName}', 'Amount ($)', '${amtFormulaStr.replace(/'/g, "\\'")}', '${amtVal.toFixed(2)}')">✏️</button>`
+          : (houseRate ? `<button class="pencil-btn" title="Edit Amount" onclick="openEditModal('house_rates', ${houseRate.id}, 'amount', '${safeName}', 'Amount ($)', '${amtFormulaStr.replace(/'/g, "\\'")}', '${amtVal}')">✏️</button>` : '')
+        }
+      </td>
+      <td onclick="selectCell('F${currRow}', '${unitFormulaStr.replace(/'/g, "\\'")}')">
+        ${formattedUnitCost} 
+        ${activeTab === '2026 CUSTOM PLAN'
+          ? `<button class="pencil-btn" title="Edit Unit Cost" onclick="openEditModal('custom_plan', ${r.id}, 'unit_cost', '${safeName}', 'Unit Cost ($)', '${unitFormulaStr.replace(/'/g, "\\'")}', '${unitCost.toFixed(2)}')">✏️</button>`
+          : (houseRate ? `<button class="pencil-btn" title="Edit Unit Cost" onclick="document.getElementById('modal-formula-val').dataset.qty='${qtyVal}'; openEditModal('house_rates', ${houseRate.id}, 'unit_cost', '${safeName}', 'Unit Cost ($)', '${unitFormulaStr.replace(/'/g, "\\'")}', '${unitCost.toFixed(2)}')">✏️</button>` : '')
+        }
+      </td>
+    `;
+    tbody.appendChild(tr);
+  });
+}
+
+// ═══════════════════════════════════════════════════════════
+// Sync Changes to Sheets — mirrors supabase-migration/sync.js,
+// but runs entirely in-browser: Supabase writes go through the
+// same `sb` client already used above (RLS enforces who can write),
+// Sheets writes use a Google OAuth token from this same page
+// (reuses the exact Client ID + scope already approved for the
+// public KeelQuickQuote webpage — no new Google Cloud Console
+// setup needed since this page is hosted on the same origin).
+//
+// Safety gates carried over unchanged from sync.js:
+//   1. A formula is never written to the Sheet unless it matches
+//      one of the 4 confirmed-safe patterns (validateQuantityFormula).
+//   2. Every Sheet write is read back to confirm it landed correctly.
+//   3. Rows are matched by NAME text, never by position alone.
+//   4. Conflict rule: a local cache (browser localStorage, not the
+//      Node script's sync-state.json — these are two independent
+//      caches, each valid only against writes made through that
+//      same location) remembers each field's last-synced value.
+//      If only one side changed since then, sync auto-applies it.
+//      If BOTH changed to different values, it's flagged as a
+//      CONFLICT and never auto-resolved.
+// ═══════════════════════════════════════════════════════════
+
+const GOOGLE_CLIENT_ID = '453224496219-qbeam8al28h07q5fcppavmg95p66sjup.apps.googleusercontent.com';
+const SHEET_ID = '1iO37IiTagtu4OGEZSHA5C62tPRc5HOKMpq0UcsUI9ig';
+const CUSTOM_TAB = '2026 CUSTOM PLAN';
+const HOUSE_TABS = { kiawah: '2026 MASTER PLAN KIAWAH', sanibel: '2026 MASTER PLAN SANIBEL', vero: '2026 MASTER PLAN VERO' };
+const SITE_TAB = 'SITE OPTIONS';
+const SYNC_STATE_KEY = 'keelSyncState';
+
+let sheetsAccessToken = null;
+let pendingSyncPlan = null;
+
+// --- Formula validator — same 4 confirmed-safe patterns as calc-engine.js ---
+const CELL_REF_RE = /\$?I\$?(\d+)/g;
+const KNOWN_ROWS = [3,4,5,6,7,8,9,10,11,12,18,19,20,21,22,23,24,25,26,27,28,29];
+function validateQuantityFormula(formula) {
+  const f = (formula || '').trim();
+  if (f === '') return { valid: false, reason: 'empty formula' };
+  if (!f.startsWith('=')) return isFinite(Number(f)) ? { valid: true } : { valid: false, reason: 'not a number and not a formula' };
+  const body = f.slice(1);
+  const refs = body.match(CELL_REF_RE);
+  if (!refs) return { valid: false, reason: 'no recognized $I$N / IN references found' };
+  const rebuilt = refs.join('+');
+  const stripped = body.replace(/\s+/g, '');
+  if (stripped !== rebuilt) return { valid: false, reason: 'contains something other than a "+"-joined chain of references — refusing to sync' };
+  for (const ref of refs) {
+    const rowNum = parseInt(ref.match(/(\d+)/)[0], 10);
+    if (rowNum === 13) continue;
+    if (!KNOWN_ROWS.includes(rowNum)) return { valid: false, reason: 'reference to row ' + rowNum + ' is not a known measurement row' };
+  }
+  return { valid: true };
+}
+
+function getSheetsAccessToken() {
+  return new Promise((resolve, reject) => {
+    if (sheetsAccessToken) { resolve(sheetsAccessToken); return; }
+    if (!window.google || !google.accounts) { reject(new Error('Google Identity Services not loaded yet — try again in a moment.')); return; }
+    const tokenClient = google.accounts.oauth2.initTokenClient({
+      client_id: GOOGLE_CLIENT_ID,
+      scope: 'https://www.googleapis.com/auth/spreadsheets',
+      callback: (resp) => {
+        if (resp.error) { reject(new Error(resp.error)); return; }
+        sheetsAccessToken = resp.access_token;
+        resolve(sheetsAccessToken);
+      }
+    });
+    tokenClient.requestAccessToken();
+  });
+}
+
+async function sheetsGet(token, ranges) {
+  const q = ranges.map(r => 'ranges=' + encodeURIComponent(r)).join('&');
+  const res = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values:batchGet?' + q + '&valueRenderOption=FORMULA', {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error('Sheets read failed: ' + JSON.stringify(body));
+  return body.valueRanges.map(vr => vr.values || []);
+}
+
+async function sheetsWriteOne(token, range, value) {
+  const res = await fetch('https://sheets.googleapis.com/v4/spreadsheets/' + SHEET_ID + '/values:batchUpdate', {
+    method: 'POST',
+    headers: { Authorization: 'Bearer ' + token, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ valueInputOption: 'USER_ENTERED', data: [{ range, values: [[value]] }] })
+  });
+  const body = await res.json();
+  if (!res.ok) throw new Error('Sheets write failed: ' + JSON.stringify(body));
+}
+
+function loadSyncState() {
+  try { return JSON.parse(localStorage.getItem(SYNC_STATE_KEY)) || { costFormulas: {}, houseRates: {}, siteOptions: {} }; }
+  catch (e) { return { costFormulas: {}, houseRates: {}, siteOptions: {} }; }
+}
+function saveSyncState(state) { localStorage.setItem(SYNC_STATE_KEY, JSON.stringify(state)); }
+
+function decideSyncAction(lastSynced, supabaseVal, sheetVal) {
+  if (String(supabaseVal) === String(sheetVal)) return 'unchanged';
+  if (lastSynced === undefined) return 'push';
+  const supaChanged = String(lastSynced) !== String(supabaseVal);
+  const sheetChanged = String(lastSynced) !== String(sheetVal);
+  if (supaChanged && !sheetChanged) return 'push';
+  if (sheetChanged && !supaChanged) return 'pull';
+  return 'conflict';
+}
+
+function findRowByName(rows, name) {
+  for (let i = 0; i < rows.length; i++) {
+    if (rows[i][0] && String(rows[i][0]).trim() === name.trim()) return i;
+  }
+  return -1;
+}
+
+async function computeSyncPlan() {
+  const token = await getSheetsAccessToken();
+  const state = loadSyncState();
+  const pushes = [], pulls = [], conflicts = [];
+
+  const [{ data: costItems }, { data: houseRates }, { data: siteOptions }] = await Promise.all([
+    sb.from('cost_items').select('id,item_name,quantity_formula'),
+    sb.from('house_rates').select('cost_item_id,house,amount'),
+    sb.from('site_options').select('id,category,option_label,cost')
+  ]);
+
+  const ranges = [
+    `'${CUSTOM_TAB}'!B3:D100`,
+    `'${HOUSE_TABS.kiawah}'!B3:E100`,
+    `'${HOUSE_TABS.sanibel}'!B3:E100`,
+    `'${HOUSE_TABS.vero}'!B3:E100`,
+    `'${SITE_TAB}'!A2:C60`
+  ];
+  const [customRows, kiawahRows, sanibelRows, veroRows, siteRows] = await sheetsGet(token, ranges);
+  const houseRows = { kiawah: kiawahRows, sanibel: sanibelRows, vero: veroRows };
+
+  const itemById = {};
+  (costItems || []).forEach(c => { itemById[c.id] = c; });
+
+  // Cost item formulas vs Custom Plan column D
+  for (const item of (costItems || [])) {
+    const rowIdx = findRowByName(customRows, item.item_name);
+    if (rowIdx === -1) continue;
+    const sheetFormula = (customRows[rowIdx][2] || '').toString();
+    const key = item.item_name;
+    const action = decideSyncAction(state.costFormulas[key], item.quantity_formula, sheetFormula);
+    if (action === 'unchanged') continue;
+    if (action === 'conflict') { conflicts.push({ type: 'formula', item: item.item_name, supabase: item.quantity_formula, sheet: sheetFormula }); continue; }
+    if (action === 'push') {
+      const check = validateQuantityFormula(item.quantity_formula);
+      if (!check.valid) { conflicts.push({ type: 'formula-refused', item: item.item_name, reason: check.reason }); continue; }
+      pushes.push({ type: 'formula', item: item.item_name, range: `'${CUSTOM_TAB}'!D${rowIdx + 3}`, value: item.quantity_formula, stateKey: 'costFormulas', stateField: key });
+    } else {
+      const check = validateQuantityFormula(sheetFormula);
+      if (!check.valid) { conflicts.push({ type: 'formula-refused', item: item.item_name, reason: 'sheet formula ' + sheetFormula + ' — ' + check.reason }); continue; }
+      pulls.push({ type: 'formula', costItemId: item.id, item: item.item_name, value: sheetFormula, stateKey: 'costFormulas', stateField: key });
+    }
+  }
+
+  // House rate amounts vs Master Plan tabs
+  for (const rate of (houseRates || [])) {
+    const ci = itemById[rate.cost_item_id];
+    if (!ci) continue;
+    const rowIdx = findRowByName(houseRows[rate.house], ci.item_name);
+    if (rowIdx === -1) continue;
+    const sheetAmount = Number(houseRows[rate.house][rowIdx][3]) || 0;
+    const key = ci.item_name + '::' + rate.house;
+    const action = decideSyncAction(state.houseRates[key], rate.amount, sheetAmount);
+    if (action === 'unchanged') continue;
+    if (action === 'conflict') { conflicts.push({ type: 'amount', item: key, supabase: rate.amount, sheet: sheetAmount }); continue; }
+    if (action === 'push') pushes.push({ type: 'amount', item: key, range: `'${HOUSE_TABS[rate.house]}'!E${rowIdx + 3}`, value: rate.amount, stateKey: 'houseRates', stateField: key });
+    else pulls.push({ type: 'amount', costItemId: rate.cost_item_id, house: rate.house, item: key, value: sheetAmount, stateKey: 'houseRates', stateField: key });
+  }
+
+  // Site option costs vs SITE OPTIONS tab
+  for (const opt of (siteOptions || [])) {
+    let rowIdx = -1;
+    for (let i = 0; i < siteRows.length; i++) {
+      if (siteRows[i][1] && String(siteRows[i][1]).trim() === opt.option_label.trim() && siteRows[i][0] && String(siteRows[i][0]).trim() === opt.category.trim()) { rowIdx = i; break; }
+    }
+    if (rowIdx === -1) continue;
+    const sheetCost = Number(siteRows[rowIdx][2]) || 0;
+    const key = opt.category + '::' + opt.option_label;
+    const action = decideSyncAction(state.siteOptions[key], opt.cost, sheetCost);
+    if (action === 'unchanged') continue;
+    if (action === 'conflict') { conflicts.push({ type: 'site_cost', item: key, supabase: opt.cost, sheet: sheetCost }); continue; }
+    if (action === 'push') pushes.push({ type: 'site_cost', item: key, range: `'${SITE_TAB}'!C${rowIdx + 2}`, value: opt.cost, stateKey: 'siteOptions', stateField: key });
+    else pulls.push({ type: 'site_cost', siteOptionId: opt.id, item: key, value: sheetCost, stateKey: 'siteOptions', stateField: key });
+  }
+
+  return { token, state, pushes, pulls, conflicts };
+}
+
+async function syncChangesToSheets() {
+  const statusEl = document.getElementById('sync-status');
+  const modal = document.getElementById('sync-modal');
+  const body = document.getElementById('sync-modal-body');
+  const applyBtn = document.getElementById('sync-apply-btn');
+  statusEl.textContent = 'Checking for changes…';
+  try {
+    pendingSyncPlan = await computeSyncPlan();
+    const { pushes, pulls, conflicts } = pendingSyncPlan;
+    let html = '';
+    html += `<p><strong>${pushes.length}</strong> change(s) to push (Supabase → Sheet):</p><ul>` +
+      pushes.map(p => `<li>[${p.type}] ${p.item} → ${p.value}</li>`).join('') + '</ul>';
+    html += `<p><strong>${pulls.length}</strong> change(s) to pull (Sheet → Supabase):</p><ul>` +
+      pulls.map(p => `<li>[${p.type}] ${p.item} → ${p.value}</li>`).join('') + '</ul>';
+    html += `<p style="color:${conflicts.length ? '#d93025' : '#5f6368'};"><strong>${conflicts.length}</strong> conflict(s) — will NOT be auto-applied:</p><ul>` +
+      conflicts.map(c => `<li>${c.item} — Supabase=${c.supabase !== undefined ? c.supabase : ''} vs Sheet=${c.sheet !== undefined ? c.sheet : ''} ${c.reason || ''}</li>`).join('') + '</ul>';
+    if (pushes.length === 0 && pulls.length === 0) html += '<p>Nothing to sync — everything already matches.</p>';
+    body.innerHTML = html;
+    applyBtn.style.display = (pushes.length + pulls.length) > 0 ? 'inline-block' : 'none';
+    modal.classList.add('active');
+    statusEl.textContent = '';
+  } catch (e) {
+    statusEl.textContent = '';
+    alert('Sync check failed: ' + e.message);
+  }
+}
+
+async function applySyncChanges() {
+  if (!pendingSyncPlan) return;
+  const { token, state, pushes, pulls } = pendingSyncPlan;
+  const applyBtn = document.getElementById('sync-apply-btn');
+  applyBtn.disabled = true;
+  applyBtn.textContent = 'Applying…';
+  const results = [];
+
+  for (const push of pushes) {
+    try {
+      await sheetsWriteOne(token, push.range, push.type === 'formula' ? push.value : String(push.value));
+      const [confirm] = await sheetsGet(token, [push.range]);
+      const written = confirm[0] && confirm[0][0];
+      const ok = push.type === 'formula' ? String(written) === push.value : Number(written) === Number(push.value);
+      if (!ok) { results.push('FAILED verification: ' + push.item + ' (sheet shows ' + written + ')'); continue; }
+      state[push.stateKey][push.stateField] = push.value;
+      results.push('Pushed: ' + push.item);
+    } catch (e) { results.push('FAILED: ' + push.item + ' — ' + e.message); }
+  }
+
+  for (const pull of pulls) {
+    try {
+      let error;
+      if (pull.type === 'formula') ({ error } = await sb.from('cost_items').update({ quantity_formula: pull.value }).eq('id', pull.costItemId));
+      else if (pull.type === 'amount') ({ error } = await sb.from('house_rates').update({ amount: pull.value }).eq('cost_item_id', pull.costItemId).eq('house', pull.house));
+      else if (pull.type === 'site_cost') ({ error } = await sb.from('site_options').update({ cost: pull.value }).eq('id', pull.siteOptionId));
+      if (error) { results.push('FAILED: ' + pull.item + ' — ' + error.message); continue; }
+      state[pull.stateKey][pull.stateField] = pull.value;
+      results.push('Pulled: ' + pull.item);
+    } catch (e) { results.push('FAILED: ' + pull.item + ' — ' + e.message); }
+  }
+
+  saveSyncState(state);
+  document.getElementById('sync-modal-body').innerHTML = '<p><strong>Done:</strong></p><ul>' + results.map(r => `<li>${r}</li>`).join('') + '</ul>';
+  applyBtn.style.display = 'none';
+  pendingSyncPlan = null;
+  loadSheetData();
+}
+
+function closeSyncModal() {
+  document.getElementById('sync-modal').classList.remove('active');
+  const applyBtn = document.getElementById('sync-apply-btn');
+  applyBtn.disabled = false;
+  applyBtn.textContent = 'Apply These Changes';
+}
+</script>
+</body>
+</html>
