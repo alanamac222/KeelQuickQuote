@@ -96,6 +96,7 @@
       <span id="user-email-label" style="margin-right:12px;color:#5f6368;"></span>
       <span id="sync-status" style="margin-right:12px;font-size:11px;color:#5f6368;"></span>
       <button id="sync-btn" onclick="syncChangesToSheets()" style="padding:4px 8px;cursor:pointer;background:#1a73e8;color:#fff;border:none;border-radius:4px;margin-right:8px;">Sync Changes to Sheets</button>
+      <button id="seed-ref-btn" onclick="seedReferenceHouseMeasurements()" title="One-time: copy Kiawah/Sanibel/Vero's raw measurements from the Sheet into Supabase. Safe to re-run." style="padding:4px 8px;cursor:pointer;background:#0f9d58;color:#fff;border:none;border-radius:4px;margin-right:8px;">Seed Reference Houses</button>
       <button onclick="signOut()" style="padding:4px 8px;cursor:pointer;">Sign Out</button>
     </div>
   </header>
@@ -705,6 +706,50 @@ async function applySyncChanges() {
   applyBtn.style.display = 'none';
   pendingSyncPlan = null;
   loadSheetData();
+}
+
+// ═══════════════════════════════════════════════════════════
+// Seed Reference Houses — one-time (but safe to re-run) copy of
+// Kiawah/Sanibel/Vero's raw measurements (Master Plan tabs, I3:I12 +
+// I18:I29) into Supabase's reference_house_measurements table. This is
+// what lets the public webpage's "load a base plan" dropdown work from
+// Supabase instead of reading the Sheet directly.
+// ═══════════════════════════════════════════════════════════
+const REF_ROW_TO_FIELD = {
+  3: 'basement_sf', 4: 'floor1_sf', 5: 'floor2_sf', 6: 'floor3_sf',
+  7: 'attic_storage_sf', 8: 'habitable_attic_sf',
+  9: 'front_porch_sf', 10: 'rear_porch_sf', 11: 'rear_deck_sf', 12: 'garage_sf',
+  18: 'exterior_doors', 19: 'windows', 20: 'baths',
+  21: 'cabinets_lf', 22: 'countertop_lf', 23: 'staircases',
+  24: 'porch_columns', 25: 'garage_doors', 26: 'interior_doors',
+  27: 'carpet_sf', 28: 'hardwood_sf', 29: 'tile_sf'
+};
+
+async function seedReferenceHouseMeasurements() {
+  const btn = document.getElementById('seed-ref-btn');
+  const statusEl = document.getElementById('sync-status');
+  btn.disabled = true;
+  statusEl.textContent = 'Reading reference houses from Sheet…';
+  try {
+    const token = await getSheetsAccessToken();
+    const results = [];
+    for (const house of Object.keys(HOUSE_TABS)) {
+      const tab = HOUSE_TABS[house];
+      const [areaVals, countVals] = await sheetsGet(token, [`'${tab}'!I3:I12`, `'${tab}'!I18:I29`]);
+      const row = { house };
+      areaVals.forEach((r, i) => { const field = REF_ROW_TO_FIELD[3 + i]; if (field) row[field] = Number((r && r[0]) || 0); });
+      countVals.forEach((r, i) => { const field = REF_ROW_TO_FIELD[18 + i]; if (field) row[field] = Number((r && r[0]) || 0); });
+      const { error } = await sb.from('reference_house_measurements').upsert(row, { onConflict: 'house' });
+      if (error) throw new Error(house + ': ' + error.message);
+      results.push(house + ' ✓');
+    }
+    statusEl.textContent = 'Seeded: ' + results.join(', ');
+  } catch (e) {
+    statusEl.textContent = '';
+    alert('Seed failed: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 function closeSyncModal() {
